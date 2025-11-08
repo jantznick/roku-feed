@@ -75,6 +75,17 @@ async function main() {
         }
     });
     console.log(`Added ${newGamesWithStreams.length} new games to the feed.`);
+
+    // Sort NCAA games to put "Western Michigan" at the front
+    if (feed["NCAA D1 Mens"]) {
+        feed["NCAA D1 Mens"].sort((a, b) => {
+            const aIsWM = a.title.includes('Western Michigan');
+            const bIsWM = b.title.includes('Western Michigan');
+            if (aIsWM && !bIsWM) return -1;
+            if (!aIsWM && bIsWM) return 1;
+            return 0; // Keep original order for other games
+        });
+    }
     
     // 6. Finalize and save the feed
     feed.lastUpdated = new Date().toISOString();
