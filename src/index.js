@@ -38,19 +38,26 @@ async function main() {
   try {
     // 1. Get the previous feed, which serves as our cache
     let feed = await getPreviousFeed(generateFeedShell());
+    
+    // Ensure the old 'content' array is removed if it exists from a previous run
+    if (feed.content) {
+        delete feed.content;
+    }
 
     // 2. Scrape onhockey.tv for current games
     const currentGames = await scrapeMainPage(browser);
     
     // 3. Compare the old feed content with the current scrape
-    const { newGames, removedGames } = compareGames(feed.content, currentGames);
+    // We need to combine the content from both league arrays for comparison.
+    const previousContent = [...(feed.NHL || []), ...(feed["NCAA D1 Mens"] || [])];
+    const { newGames, removedGames } = compareGames(previousContent, currentGames);
 
     // 4. Handle removed games
     await deleteImages(removedGames);
     await cleanupLocalImages(removedGames);
-    feed.content = feed.content.filter(item => 
-        !removedGames.some(removed => removed.id === item.id)
-    );
+    // Filter both league arrays to remove the old games
+    feed.NHL = (feed.NHL || []).filter(item => !removedGames.some(removed => removed.id === item.id));
+    feed["NCAA D1 Mens"] = (feed["NCAA D1 Mens"] || []).filter(item => !removedGames.some(removed => removed.id === item.id));
     console.log(`Removed ${removedGames.length} games from the feed.`);
 
     // 5. Handle new games
@@ -58,16 +65,16 @@ async function main() {
     const localImageMap = await generateImages(browser, newGamesWithStreams);
     const publicUrlMap = await uploadImages(localImageMap);
 
-    // Filter out any games that might already be in the feed, just in case.
-    const uniqueNewGames = newGamesWithStreams.filter(newGame => 
-        !feed.content.some(existingItem => existingItem.id === newGame.name.replace(/[^a-zA-Z0-9-]/g, ""))
-    );
-
-    const newFeedItems = uniqueNewGames.map(game => 
-        createFeedItem(game, publicUrlMap.get(game.id))
-    );
-    feed.content.push(...newFeedItems);
-    console.log(`Added ${newFeedItems.length} new games to the feed.`);
+    // Add the new items to the correct league array.
+    newGamesWithStreams.forEach(game => {
+        const feedItem = createFeedItem(game, publicUrlMap.get(game.id));
+        if (game.league === 'NHL') {
+            feed.NHL.push(feedItem);
+        } else if (game.league === 'NCAA') {
+            feed["NCAA D1 Mens"].push(feedItem);
+        }
+    });
+    console.log(`Added ${newGamesWithStreams.length} new games to the feed.`);
     
     // 6. Finalize and save the feed
     feed.lastUpdated = new Date().toISOString();

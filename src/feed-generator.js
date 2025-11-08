@@ -25,7 +25,6 @@ export function createFeedItem(game, imageUrl) {
     return {
         id: game.id,
         title: game.name,
-        league: game.league,
         shortDescription: `${game.league} - ${game.time}`,
         thumbnail: imageUrl || FALLBACK_THUMBNAIL,
         genres: ["sports", "hockey"],
@@ -47,6 +46,7 @@ export function generateFeedShell() {
     providerName: "Roku Hockey",
     lastUpdated: new Date().toISOString(),
     language: "en-US",
-    content: [],
+    "NHL": [],
+    "NCAA D1 Mens": []
   };
 }
