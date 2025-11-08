@@ -5,6 +5,31 @@ const SCRAPER_URL = "https://onhockey.tv/";
 const DEBUG_FILE_PATH = "debug-output.html";
 
 /**
+ * Converts a UTC time string (HH:mm) to CST by subtracting 6 hours.
+ * @param {string} utcTime - The time string in "HH:mm" format.
+ * @returns {string} The converted time string in "HH:mm" format.
+ */
+function convertUtcToCst(utcTime) {
+    if (!utcTime || utcTime === "N/A") return "N/A";
+
+    const parts = utcTime.split(':');
+    if (parts.length !== 2) return utcTime; // Return original if format is unexpected
+
+    let hour = parseInt(parts[0], 10);
+    const minute = parts[1];
+
+    if (isNaN(hour)) return utcTime;
+
+    hour -= 6;
+    if (hour < 0) {
+        hour += 24;
+    }
+
+    const newHour = hour.toString().padStart(2, '0');
+    return `${newHour}:${minute}`;
+}
+
+/**
  * Parses a "gamelinks" div to find stream links, including their feed type (home/away).
  * This is a direct port of the logic from the old, working script.
  * This is designed to be executed in the browser's context.
@@ -127,8 +152,14 @@ export async function scrapeMainPage(browser) {
             return scrapedGames;
         }, extractStreamLinks.toString());
 
-        console.log(`Found ${games.length} total games on the main page.`);
-        return games;
+        // Convert all game times from UTC to CST before returning
+        const processedGames = games.map(game => ({
+            ...game,
+            time: convertUtcToCst(game.time)
+        }));
+
+        console.log(`Found ${processedGames.length} total games on the main page.`);
+        return processedGames;
 
     } catch (error) {
         console.error(`An error occurred during main page scraping:`, error);

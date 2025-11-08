@@ -26,6 +26,7 @@ export function createFeedItem(game, imageUrl) {
         id: game.id,
         title: game.name,
         shortDescription: `${game.league} - ${game.time}`,
+        startTime: game.time,
         thumbnail: imageUrl || FALLBACK_THUMBNAIL,
         genres: ["sports", "hockey"],
         releaseDate: releaseDate,
