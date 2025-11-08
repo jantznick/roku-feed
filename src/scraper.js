@@ -62,6 +62,11 @@ export async function scrapeMainPage(browser) {
             console.log(`Navigating to ${SCRAPER_URL}...`);
             await page.goto(SCRAPER_URL, { waitUntil: "networkidle2", timeout: 60000 });
             console.log("Page loaded.");
+            
+            // Save the HTML content for debugging purposes
+            const htmlContent = await page.content();
+            await fs.writeFile('latest-scrape-output.html', htmlContent, 'utf-8');
+            console.log("Saved live page content to latest-scrape-output.html");
         }
 
         const games = await page.evaluate((extractStreamLinksStr) => {
