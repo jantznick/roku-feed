@@ -58,7 +58,7 @@ function extractStreamLinks(gameLinksDiv) {
             const provider = anchor.textContent?.trim().toLowerCase();
             const rawUrl = anchor.getAttribute('href');
 
-            if ((provider === 'fluidtv' || provider === 'vodcast') && rawUrl) {
+            if ((provider === 'fluidtv') && rawUrl) {
                 // Pass the raw URL and the determined feed type
                 links.push({ provider, url: rawUrl, feedType: currentFeedType });
             }
