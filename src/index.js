@@ -8,6 +8,7 @@ import { getPreviousFeed, compareGames } from './state-manager.js';
 import { generateImages } from './image-generator.js';
 import { createFeedItem, generateFeedShell } from './feed-generator.js';
 import { uploadImages, uploadFeed, deleteImages } from './uploader.js';
+import { logLeagues } from './league-logger.js';
 
 const FEED_FILE_PATH = path.resolve(process.cwd(), 'dist', 'feed.json');
 
@@ -55,6 +56,9 @@ async function main() {
     const allCurrentGames = [...onHockeyGames, ...streamedGames];
     console.log(`\nFound ${onHockeyGames.length} games from onhockey.tv and ${streamedGames.length} games from Streamed.pk.`);
     console.log(`Total unique games to process: ${allCurrentGames.length}`);
+
+    // Log any new soccer leagues discovered
+    await logLeagues(allCurrentGames);
     
     // 3. Compare the old feed content with the current scrape
     // We need to get ALL previous content for comparison.
