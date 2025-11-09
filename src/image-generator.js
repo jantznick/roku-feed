@@ -161,6 +161,12 @@ export async function generateImages(browser, games) {
     // Load static league logos
     const nhlLogoB64 = await imageFileToBase64(path.resolve(process.cwd(), "dist", "league-logos", "nhl.png"));
     const ncaaLogoB64 = await imageFileToBase64(path.resolve(process.cwd(), "dist", "league-logos", "ncaa.png"));
+    const basketballLogoB64 = await imageFileToBase64(path.resolve(process.cwd(), "dist", "league-logos", "nba.png"));
+    const americanFootballLogoB64 = await imageFileToBase64(path.resolve(process.cwd(), "dist", "league-logos", "nfl.png"));
+    const baseballLogoB64 = await imageFileToBase64(path.resolve(process.cwd(), "dist", "league-logos", "mlb.png"));
+    const golfLogoB64 = await imageFileToBase64(path.resolve(process.cwd(), "dist", "league-logos", "pga.png"));
+    const soccerLogoB64 = await imageFileToBase64(path.resolve(process.cwd(), "dist", "league-logos", "soccer.png"));
+
 
     // Ensure the output directory exists.
     await fs.mkdir(imagesDir, { recursive: true });
@@ -204,7 +210,38 @@ export async function generateImages(browser, games) {
             gradient = gradients[index % gradients.length];
         }
 
-        const leagueLogoB64 = game.league === 'NHL' ? nhlLogoB64 : ncaaLogoB64;
+        let leagueLogoB64 = null;
+        switch (game.league) {
+            case 'NHL':
+                leagueLogoB64 = nhlLogoB64;
+                break;
+            case 'NCAA':
+            case 'NCAA D1 Mens':
+                leagueLogoB64 = ncaaLogoB64;
+                break;
+            case 'BASKETBALL':
+                leagueLogoB64 = basketballLogoB64;
+                break;
+            case 'AMERICAN-FOOTBALL':
+                leagueLogoB64 = americanFootballLogoB64;
+                break;
+            case 'BASEBALL':
+                leagueLogoB64 = baseballLogoB64;
+                break;
+            case 'GOLF':
+                leagueLogoB64 = golfLogoB64;
+                break;
+            case 'HOCKEY':
+                leagueLogoB64 = nhlLogoB64; // Fallback to NHL for now
+                break;
+            case 'FOOTBALL':
+                leagueLogoB64 = soccerLogoB64;
+                break;
+            default:
+                // No logo for other leagues
+                break;
+        }
+
         const htmlContent = getPosterHtml(team1, team2, game.league, gradient, team1LogoB64, team2LogoB64, leagueLogoB64, game.streamLinks.length);
 
         await page.setContent(htmlContent, { waitUntil: 'domcontentloaded' });
