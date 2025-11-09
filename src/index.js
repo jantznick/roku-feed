@@ -6,6 +6,7 @@ import { scrapeMainPage, deepScrapeGames } from './scraper.js';
 import { scrapeStreamedGames } from './streamed-scraper.js';
 import { getPreviousFeed, compareGames } from './state-manager.js';
 import { generateImages } from './image-generator.js';
+import { downloadPosters } from './poster-downloader.js';
 import { createFeedItem, generateFeedShell } from './feed-generator.js';
 import { uploadImages, uploadFeed, deleteImages } from './uploader.js';
 import { logLeagues } from './league-logger.js';
@@ -85,7 +86,16 @@ async function main() {
     // The new streamed games already have their streams, so we just combine them.
     const allNewGamesWithStreams = [...newOnHockeyGamesWithStreams, ...newStreamedGames];
 
-    const localImageMap = await generateImages(browser, allNewGamesWithStreams);
+    // Separate games into those that need an image generated and those that have a poster to download.
+    const gamesToGenerate = allNewGamesWithStreams.filter(game => !game.poster);
+    const gamesWithPoster = allNewGamesWithStreams.filter(game => game.poster);
+
+    const [generatedImageMap, downloadedPosterMap] = await Promise.all([
+        generateImages(browser, gamesToGenerate),
+        downloadPosters(gamesWithPoster)
+    ]);
+    
+    const localImageMap = new Map([...generatedImageMap, ...downloadedPosterMap]);
     const publicUrlMap = await uploadImages(localImageMap);
 
     // Add the new items to the correct league array.

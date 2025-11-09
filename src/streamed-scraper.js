@@ -66,6 +66,7 @@ export async function scrapeStreamedGames(browser, sportsCategories) {
             releaseDate: new Date(game.date || Date.now()).toISOString(),
             dateAdded: dateAdded,
             league: getLeague(game),
+            poster: game.poster, // Pass the poster URL through
             streamLinks: streamLinks
         };
     }).filter(Boolean);
@@ -153,7 +154,8 @@ async function getLiveStreams(categories) {
                         title: game.title,
                         category: game.category,
                         embedUrls: allEmbedUrls,
-                        date: game.date
+                        date: game.date,
+                        poster: game.poster
                     });
                 }
             } catch (gameError) {

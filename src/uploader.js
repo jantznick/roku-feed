@@ -54,11 +54,23 @@ export async function uploadImages(localImageMap) {
         
         try {
             const fileContent = await fs.readFile(localPath);
+
+            // Determine content type based on file extension
+            const extension = path.extname(localPath).toLowerCase();
+            let contentType = 'image/png'; // Default
+            if (extension === '.jpg' || extension === '.jpeg') {
+                contentType = 'image/jpeg';
+            } else if (extension === '.webp') {
+                contentType = 'image/webp';
+            } else if (extension === '.gif') {
+                contentType = 'image/gif';
+            }
+
             const command = new PutObjectCommand({
                 Bucket: B2_BUCKET_NAME,
                 Key: remotePath,
                 Body: fileContent,
-                ContentType: 'image/png',
+                ContentType: contentType,
             });
             await s3Client.send(command);
 
