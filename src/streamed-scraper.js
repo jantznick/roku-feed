@@ -61,7 +61,8 @@ async function getLiveStreams(categories) {
                     allGameStreams.push({
                         title: game.title,
                         category: game.category,
-                        embedUrls: allEmbedUrls
+                        embedUrls: allEmbedUrls,
+                        date: game.date
                     });
                     console.log(`Successfully found a total of ${allEmbedUrls.length} embed URLs for this game. Prioritized 'gg.poocloud.in'.`);
                 } else {
@@ -200,6 +201,7 @@ async function main() {
     await browser.close();
 
     // Transform the data to match the other scraper's format
+    const dateAdded = new Date().toISOString();
     const formattedGames = gamesToProcess.map(game => {
         const streamLinks = game.finalStreamInfo.map((info, index) => {
             if (!info) return null;
@@ -215,7 +217,11 @@ async function main() {
         if (streamLinks.length === 0) return null;
 
         return {
-            name: game.title,
+            title: game.title,
+            shortDescription: `Live stream of the ${game.title} match.`,
+            releaseDate: new Date(game.date).toISOString(),
+            dateAdded: dateAdded,
+            thumbnail: `https://via.placeholder.com/480x270.png?text=${encodeURIComponent(game.title)}`,
             league: game.category.toUpperCase(),
             streamLinks: streamLinks
         };
