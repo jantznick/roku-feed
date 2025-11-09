@@ -1,38 +1,24 @@
 import puppeteer from 'puppeteer';
 import fs from 'fs';
 
+const LIVE_MATCHES_URL = 'https://streamed.pk/api/matches/live';
 const STREAM_API_BASE_URL = 'https://streamed.pk/api/stream';
 
 async function getLiveStreams(categories) {
     try {
-        console.log(`Fetching live matches for categories: ${categories.join(', ')}`);
-        let allMatches = [];
+        console.log('Fetching live matches...');
+        const matchesResponse = await fetch(LIVE_MATCHES_URL);
+        if (!matchesResponse.ok) throw new Error(`API returned status ${matchesResponse.status}`);
+        const matches = await matchesResponse.json();
 
-        for (const category of categories) {
-            try {
-                const categoryUrl = `https://streamed.pk/api/matches/${category}`;
-                console.log(`-- Fetching from ${categoryUrl}`);
-                const matchesResponse = await fetch(categoryUrl);
-                if (!matchesResponse.ok) {
-                    console.warn(`---- API for category "${category}" returned status ${matchesResponse.status}. Skipping.`);
-                    continue;
-                }
-                const categoryMatches = await matchesResponse.json();
-                allMatches = allMatches.concat(categoryMatches);
-                console.log(`---- Found ${categoryMatches.length} matches for ${category}.`);
-            } catch (error) {
-                console.warn(`---- Error fetching matches for category "${category}": ${error.message}`);
-            }
-        }
-
-        const sportGames = allMatches.filter(match => match.sources && match.sources.length > 0);
+        const sportGames = matches.filter(match => categories.includes(match.category) && match.sources && match.sources.length > 0);
 
         if (sportGames.length === 0) {
             console.log('No live games for the specified categories with available sources found.');
             return [];
         }
 
-        console.log(`Found a total of ${sportGames.length} games across specified categories. Fetching initial stream info...`);
+        console.log(`Found ${sportGames.length} games across specified categories. Fetching initial stream info...`);
         const allGameStreams = [];
 
         for (const game of sportGames) {
@@ -170,7 +156,7 @@ async function findPlayButton(page) {
 }
 
 async function main() {
-    const sportsCategories = ['golf', 'basketball', 'american-football', 'baseball', 'hockey'];
+    const sportsCategories = ['golf', 'basketball', 'american-football', 'baseball', 'hockey', 'football'];
     console.log(`Searching for live games in categories: ${sportsCategories.join(', ')}`);
 
     const allGames = await getLiveStreams(sportsCategories);
@@ -213,7 +199,29 @@ async function main() {
 
     await browser.close();
 
-    const finalJson = JSON.stringify(gamesToProcess, null, 2);
+    // Transform the data to match the other scraper's format
+    const formattedGames = gamesToProcess.map(game => {
+        const streamLinks = game.finalStreamInfo.map((info, index) => {
+            if (!info) return null;
+            return {
+                name: `Stream ${index + 1}`,
+                url: info.streamUrl,
+                headers: {
+                    Referer: info.referer
+                }
+            };
+        }).filter(Boolean); // Remove any null entries
+
+        if (streamLinks.length === 0) return null;
+
+        return {
+            name: game.title,
+            league: game.category.toUpperCase(),
+            streamLinks: streamLinks
+        };
+    }).filter(Boolean);
+
+    const finalJson = JSON.stringify(formattedGames, null, 2);
 
     console.log('\n\n--- FINAL RESULTS ---');
     console.log(finalJson);
