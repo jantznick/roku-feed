@@ -167,6 +167,23 @@ export async function generateImages(browser, games) {
     const golfLogoB64 = await imageFileToBase64(path.resolve(process.cwd(), "dist", "league-logos", "pga.png"));
     const soccerLogoB64 = await imageFileToBase64(path.resolve(process.cwd(), "dist", "league-logos", "soccer.png"));
 
+    // --- Soccer League Specific Logos ---
+    const soccerLeagueLogoMap = {
+        'Serie A': await imageFileToBase64(path.resolve(process.cwd(), "dist", "league-logos", "serie-a.png")),
+        'Saudi Pro League': await imageFileToBase64(path.resolve(process.cwd(), "dist", "league-logos", "saudi-pro-league.png")),
+        'EFL Championship': await imageFileToBase64(path.resolve(process.cwd(), "dist", "league-logos", "efl-championship.png")),
+        'La Liga': await imageFileToBase64(path.resolve(process.cwd(), "dist", "league-logos", "la-liga.png")),
+        'Eredivisie': await imageFileToBase64(path.resolve(process.cwd(), "dist", "league-logos", "eredivisie.png")),
+        'Primeira Liga': await imageFileToBase64(path.resolve(process.cwd(), "dist", "league-logos", "primeira-liga.png")),
+        'Ligue 1': await imageFileToBase64(path.resolve(process.cwd(), "dist", "league-logos", "ligue-1.png")),
+        'Bundesliga': await imageFileToBase64(path.resolve(process.cwd(), "dist", "league-logos", "bundesliga.png")),
+        'Super Lig': await imageFileToBase64(path.resolve(process.cwd(), "dist", "league-logos", "super-lig.png")),
+        'Belgian Pro League': await imageFileToBase64(path.resolve(process.cwd(), "dist", "league-logos", "belgian-pro-league.jpg")),
+        'Scottish Premiership': await imageFileToBase64(path.resolve(process.cwd(), "dist", "league-logos", "scottish-premiership.svg")),
+        'Argentine Primera Division': await imageFileToBase64(path.resolve(process.cwd(), "dist", "league-logos", "argentine-primera-division.png")),
+        'Brasileirao Serie A': await imageFileToBase64(path.resolve(process.cwd(), "dist", "league-logos", "brasileirao-serie-a.png")),
+    };
+
 
     // Ensure the output directory exists.
     await fs.mkdir(imagesDir, { recursive: true });
@@ -235,10 +252,16 @@ export async function generateImages(browser, games) {
                 leagueLogoB64 = nhlLogoB64; // Fallback to NHL for now
                 break;
             case 'FOOTBALL':
-                leagueLogoB64 = soccerLogoB64;
+                leagueLogoB64 = soccerLogoB64; // Generic fallback
                 break;
             default:
-                // No logo for other leagues
+                // Check if it's a specific soccer league
+                if (soccerLeagueLogoMap[game.league]) {
+                    leagueLogoB64 = soccerLeagueLogoMap[game.league];
+                } else {
+                    // Fallback for unknown soccer leagues to the generic logo
+                    leagueLogoB64 = soccerLogoB64;
+                }
                 break;
         }
 

@@ -65,14 +65,20 @@ export async function scrapeStreamedGames(browser, sportsCategories) {
             shortDescription: `Live stream of the ${game.title} match.`,
             releaseDate: new Date(game.date || Date.now()).toISOString(),
             dateAdded: dateAdded,
-            // The thumbnail is generated later by the main script, so we no longer add it here.
-            league: game.category.toUpperCase(),
+            league: getLeague(game),
             streamLinks: streamLinks
         };
     }).filter(Boolean);
 
     console.log(`✅ Found and processed ${formattedGames.length} games from Streamed.pk.`);
     return formattedGames;
+}
+
+function getLeague(game) {
+    if (game.category === 'football' && game.title.includes(':')) {
+        return game.title.split(':')[0].trim();
+    }
+    return game.category.toUpperCase();
 }
 
 async function getLiveStreams(categories) {

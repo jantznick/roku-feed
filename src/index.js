@@ -48,7 +48,7 @@ async function main() {
     // 2. Scrape for games
     const onHockeyGames = await scrapeMainPage(browser);
 
-    const sportsCategories = ['golf', 'basketball', 'american-football', 'baseball', 'hockey'];
+    const sportsCategories = ['golf', 'basketball', 'american-football', 'baseball', 'hockey', 'football'];
     const streamedGames = await scrapeStreamedGames(browser, sportsCategories);
 
     // Combine the games from all sources
@@ -86,14 +86,6 @@ async function main() {
 
     // Add the new items to the correct league array.
     allNewGamesWithStreams.forEach(game => {
-        // --- START EXHAUSTIVE LOGGING ---
-        // console.log('--- PROCESSING GAME OBJECT ---');
-        // console.log(JSON.stringify(game, null, 2));
-        // console.log(`- Game Name: ${game.name}`);
-        // console.log(`- Release Date Value: ${game.releaseDate}`);
-        // console.log(`- Type of Release Date: ${typeof game.releaseDate}`);
-        // console.log('----------------------------');
-        // --- END EXHAUSTIVE LOGGING ---
 
         const feedItem = createFeedItem(game, publicUrlMap.get(game.id));
         const league = game.league === 'NCAA' ? 'NCAA D1 Mens' : game.league;
@@ -118,7 +110,40 @@ async function main() {
     
     // 6. Finalize and save the feed
     feed.lastUpdated = new Date().toISOString();
-    const feedJson = JSON.stringify(feed, null, 2);
+
+    // Re-order the feed object to place soccer leagues last
+    const finalFeed = {
+        providerName: feed.providerName,
+        lastUpdated: feed.lastUpdated,
+        language: feed.language,
+    };
+
+    const allLeagueKeys = Object.keys(feed).filter(key => Array.isArray(feed[key]));
+    const knownNonSoccerLeagues = new Set(['NHL', 'NCAA D1 Mens', 'BASKETBALL', 'AMERICAN-FOOTBALL', 'BASEBALL', 'GOLF', 'HOCKEY']);
+    
+    const nonSoccerLeagues = allLeagueKeys.filter(key => knownNonSoccerLeagues.has(key)).sort();
+    const soccerLeagues = allLeagueKeys.filter(key => !knownNonSoccerLeagues.has(key));
+    
+    const genericFootball = soccerLeagues.find(key => key === 'FOOTBALL');
+    const specificSoccerLeagues = soccerLeagues.filter(key => key !== 'FOOTBALL').sort();
+
+    // Add non-soccer leagues first
+    nonSoccerLeagues.forEach(league => {
+        if (feed[league] && feed[league].length > 0) finalFeed[league] = feed[league];
+    });
+
+    // Add the generic FOOTBALL league next
+    if (genericFootball && feed[genericFootball] && feed[genericFootball].length > 0) {
+        finalFeed[genericFootball] = feed[genericFootball];
+    }
+
+    // Add specific soccer leagues last
+    specificSoccerLeagues.forEach(league => {
+        if (feed[league] && feed[league].length > 0) finalFeed[league] = feed[league];
+    });
+
+    const feedJson = JSON.stringify(finalFeed, null, 2);
+
     // Write locally first for inspection
     await fs.writeFile(FEED_FILE_PATH, feedJson, 'utf8');
     // Then upload
