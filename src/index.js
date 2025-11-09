@@ -3,6 +3,7 @@ import puppeteer from 'puppeteer';
 import fs from 'fs/promises';
 import path from 'path';
 import { scrapeMainPage, deepScrapeGames } from './scraper.js';
+import { scrapeStreamedGames } from './streamed-scraper.js';
 import { getPreviousFeed, compareGames } from './state-manager.js';
 import { generateImages } from './image-generator.js';
 import { createFeedItem, generateFeedShell } from './feed-generator.js';
@@ -44,37 +45,65 @@ async function main() {
         delete feed.content;
     }
 
-    // 2. Scrape onhockey.tv for current games
-    const currentGames = await scrapeMainPage(browser);
+    // 2. Scrape for games
+    const onHockeyGames = await scrapeMainPage(browser);
+
+    const sportsCategories = ['golf', 'basketball', 'american-football', 'baseball', 'hockey'];
+    const streamedGames = await scrapeStreamedGames(browser, sportsCategories);
+
+    // Combine the games from all sources
+    const allCurrentGames = [...onHockeyGames, ...streamedGames];
+    console.log(`\nFound ${onHockeyGames.length} games from onhockey.tv and ${streamedGames.length} games from Streamed.pk.`);
+    console.log(`Total unique games to process: ${allCurrentGames.length}`);
     
     // 3. Compare the old feed content with the current scrape
-    // We need to combine the content from both league arrays for comparison.
-    const previousContent = [...(feed.NHL || []), ...(feed["NCAA D1 Mens"] || [])];
-    const { newGames, removedGames } = compareGames(previousContent, currentGames);
+    // We need to get ALL previous content for comparison.
+    const previousLeagues = Object.keys(feed).filter(k => Array.isArray(feed[k]));
+    const previousContent = previousLeagues.flatMap(league => feed[league]);
+    const { newGames, removedGames } = compareGames(previousContent, allCurrentGames);
 
     // 4. Handle removed games
     await deleteImages(removedGames);
     await cleanupLocalImages(removedGames);
-    // Filter both league arrays to remove the old games
-    feed.NHL = (feed.NHL || []).filter(item => !removedGames.some(removed => removed.id === item.id));
-    feed["NCAA D1 Mens"] = (feed["NCAA D1 Mens"] || []).filter(item => !removedGames.some(removed => removed.id === item.id));
+    // Filter all league arrays to remove old games
+    previousLeagues.forEach(league => {
+        feed[league] = feed[league].filter(item => !removedGames.some(removed => removed.id === item.id));
+    });
     console.log(`Removed ${removedGames.length} games from the feed.`);
 
     // 5. Handle new games
-    const newGamesWithStreams = await deepScrapeGames(browser, newGames);
-    const localImageMap = await generateImages(browser, newGamesWithStreams);
+    // The 'deepScrapeGames' is specific to onhockey.tv, so we only pass its new games.
+    const newOnHockeyGames = newGames.filter(game => onHockeyGames.some(g => g.id === game.id));
+    const newStreamedGames = newGames.filter(game => streamedGames.some(g => g.id === game.id));
+    
+    const newOnHockeyGamesWithStreams = await deepScrapeGames(browser, newOnHockeyGames);
+
+    // The new streamed games already have their streams, so we just combine them.
+    const allNewGamesWithStreams = [...newOnHockeyGamesWithStreams, ...newStreamedGames];
+
+    const localImageMap = await generateImages(browser, allNewGamesWithStreams);
     const publicUrlMap = await uploadImages(localImageMap);
 
     // Add the new items to the correct league array.
-    newGamesWithStreams.forEach(game => {
+    allNewGamesWithStreams.forEach(game => {
+        // --- START EXHAUSTIVE LOGGING ---
+        // console.log('--- PROCESSING GAME OBJECT ---');
+        // console.log(JSON.stringify(game, null, 2));
+        // console.log(`- Game Name: ${game.name}`);
+        // console.log(`- Release Date Value: ${game.releaseDate}`);
+        // console.log(`- Type of Release Date: ${typeof game.releaseDate}`);
+        // console.log('----------------------------');
+        // --- END EXHAUSTIVE LOGGING ---
+
         const feedItem = createFeedItem(game, publicUrlMap.get(game.id));
-        if (game.league === 'NHL') {
-            feed.NHL.push(feedItem);
-        } else if (game.league === 'NCAA') {
-            feed["NCAA D1 Mens"].push(feedItem);
+        const league = game.league === 'NCAA' ? 'NCAA D1 Mens' : game.league;
+
+        if (!feed[league]) {
+            feed[league] = [];
         }
+        feed[league].push(feedItem);
     });
-    console.log(`Added ${newGamesWithStreams.length} new games to the feed.`);
+    console.log(`Added ${allNewGamesWithStreams.length} new games to the feed.`);
 
     // Sort NCAA games to put "Western Michigan" at the front
     if (feed["NCAA D1 Mens"]) {

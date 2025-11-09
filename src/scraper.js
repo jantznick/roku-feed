@@ -133,6 +133,15 @@ export async function scrapeMainPage(browser) {
                     // Create a more robust unique ID using the game name and date
                     const gameId = `${gameName}-${dateText}`.replace(/\s+/g, '-').replace(/-$/, '');
 
+                    const dateStringAttempt = `${dateText.split(', ')[1]} ${new Date().getFullYear()} ${time || '00:00'}:00 UTC`;
+                    let releaseDateObj = new Date(dateStringAttempt);
+
+                    // Final validation. If parsing fails for any reason, use now as a fallback.
+                    if (isNaN(releaseDateObj.getTime())) {
+                        console.warn(`-- Failed to parse date for game "${gameName}". Falling back to current time.`);
+                        releaseDateObj = new Date();
+                    }
+
                     const gameLinksDiv = row.querySelector(".gamelinks");
                     const streams = evaledExtractStreamLinks(gameLinksDiv);
 
@@ -141,6 +150,7 @@ export async function scrapeMainPage(browser) {
                             id: gameId,
                             name: gameName,
                             time,
+                            releaseDate: releaseDateObj.toISOString(),
                             league: leagueName.includes('NCAA') ? 'NCAA' : 'NHL',
                             teams: baseTeams,
                             streamLinks: streams

@@ -19,19 +19,18 @@ export function createFeedItem(game, imageUrl) {
         };
     });
 
-    const releaseDate = new Date().toISOString().split('T')[0];
-    const dateAdded = new Date(`${releaseDate}T${game.time}:00Z`).toISOString();
+    const startTime = game.time || new Date(game.releaseDate).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
 
     return {
         id: game.id,
         title: game.name,
-        shortDescription: `${game.league} - ${game.time}`,
-        startTime: game.time,
+        shortDescription: `${game.league} - ${startTime}`,
+        startTime: startTime,
         thumbnail: imageUrl || FALLBACK_THUMBNAIL,
         genres: ["sports", "hockey"],
-        releaseDate: releaseDate,
+        releaseDate: game.releaseDate.split('T')[0], // Use the date part of the releaseDate
         content: {
-            dateAdded: dateAdded,
+            dateAdded: game.releaseDate, // Use the full releaseDate ISO string
             duration: 3 * 60 * 60, // ~3 hours
             videos: videos,
         },
