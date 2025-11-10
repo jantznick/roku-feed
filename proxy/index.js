@@ -3,7 +3,7 @@ const http = require('http');
 const createHlsProxyMiddleware = require('./node_modules/@warren-bank/hls-proxy/hls-proxy/proxy');
 
 const app = express();
-const port = process.env.PORT || 8080;
+const port = process.env.PORT || 8787;
 const proxyHost = '192.168.1.50:8787';
 
 const refererUrl = "https://embedsports.top/";
@@ -15,10 +15,14 @@ const middleware = createHlsProxyMiddleware({
     'host': proxyHost,
     'req-headers': {
         'Referer': refererUrl,
-        'Origin': origin,
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/117.0'
     },
-    'debug_level': 1,
+    // Add this option to ignore SSL certificate errors from the upstream server.
+    'req_options': {
+        'rejectUnauthorized': false
+    },
+    // Increase debug level for maximum verbosity to inspect manifest rewriting.
+    'debug_level': 3,
 });
 
 app.use('/proxy', middleware.request);
