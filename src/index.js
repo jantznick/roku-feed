@@ -90,9 +90,15 @@ async function main() {
     // The new streamed games already have their streams, so we just combine them.
     const allNewGamesWithStreams = [...newOnHockeyGamesWithStreams, ...newStreamedGames, ...newChannels247Games];
 
-    // Separate games into those that need an image generated and those that have a poster to download.
-    const gamesToGenerate = allNewGamesWithStreams.filter(game => !game.poster);
-    const gamesWithPoster = allNewGamesWithStreams.filter(game => game.poster);
+    // --- IMAGE HANDLING REFACTORED ---
+    
+    // 1. Separate 24/7 channels, as their posters are static and don't need processing.
+    const channelsForFeed = allNewGamesWithStreams.filter(game => game.league === '24/7 Channels');
+    const gamesForImageProcessing = allNewGamesWithStreams.filter(game => game.league !== '24/7 Channels');
+
+    // 2. Run the image pipeline ONLY on the regular games.
+    const gamesToGenerate = gamesForImageProcessing.filter(game => !game.poster);
+    const gamesWithPoster = gamesForImageProcessing.filter(game => game.poster);
 
     const [generatedImageMap, downloadedPosterMap] = await Promise.all([
         generateImages(browser, gamesToGenerate),
@@ -100,12 +106,21 @@ async function main() {
     ]);
     
     const localImageMap = new Map([...generatedImageMap, ...downloadedPosterMap]);
+    // This map now only contains URLs for regular games.
     const publicUrlMap = await uploadImages(localImageMap);
 
-    // Add the new items to the correct league array.
+    // 3. Add all new items to the feed, using the correct poster URL for each type.
     allNewGamesWithStreams.forEach(game => {
+        let posterUrl;
+        if (game.league === '24/7 Channels') {
+            // For channels, the poster URL is the final, hardcoded public URL.
+            posterUrl = game.poster;
+        } else {
+            // For games, we get the URL from the map of freshly uploaded images.
+            posterUrl = publicUrlMap.get(game.id);
+        }
 
-        const feedItem = createFeedItem(game, publicUrlMap.get(game.id));
+        const feedItem = createFeedItem(game, posterUrl);
         const league = game.league === 'NCAA' ? 'NCAA D1 Mens' : game.league;
 
         if (!feed[league]) {
@@ -113,7 +128,7 @@ async function main() {
         }
         feed[league].push(feedItem);
     });
-    console.log(`Added ${allNewGamesWithStreams.length} new games to the feed.`);
+    console.log(`Added ${allNewGamesWithStreams.length} new games/channels to the feed.`);
 
     // Sort NCAA games to put "Western Michigan" at the front
     if (feed["NCAA D1 Mens"]) {

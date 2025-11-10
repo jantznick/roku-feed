@@ -318,6 +318,10 @@ export async function scrape247Channels(browser) {
 
         if (streamLinks.length === 0) return null;
         
+        // Override the poster with our hardcoded version if it exists in the map.
+        const customLogo = channelLogoMap[channel.title];
+        const posterUrl = customLogo ? `${LOGO_BASE_URL}${customLogo}` : channel.poster;
+
         return {
             id: channel.id, // Use the stable ID from the API
             name: channel.title,
@@ -327,7 +331,7 @@ export async function scrape247Channels(browser) {
             releaseDate: new Date().toISOString(),
             dateAdded: new Date().toISOString(),
             league: '24/7 Channels', // Assign to the new league
-            poster: channel.poster,
+            poster: posterUrl,
             streamLinks: streamLinks
         };
     }).filter(Boolean);
@@ -335,3 +339,16 @@ export async function scrape247Channels(browser) {
     console.log(`✅ Found and processed ${formattedChannels.length} 24/7 channels.`);
     return formattedChannels;
 }
+
+const channelLogoMap = {
+    'ESPN USA': 'espn.png',
+    'NFL REDZONE': 'nfl-red-zone.png',
+    'NFL NETWORK': 'nfl-network.jpeg',
+    'NHL NETWORK': 'nhl-network.jpg',
+    'MLB TV': 'mlb-tv.png',
+    'Marquee Sports Network': 'marquee.jpeg',
+    'TNT': 'tnt.png',
+    'NBA TV': 'nba-tv.png'
+};
+
+const LOGO_BASE_URL = 'https://roku-hockey.s3.us-west-004.backblazeb2.com/channel-logos/';
