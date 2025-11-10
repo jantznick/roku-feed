@@ -1,16 +1,12 @@
 import express from 'express';
 import http from 'http';
 import { gotScraping } from 'got-scraping';
-import cors from 'cors';
 
 const app = express();
 const port = process.env.PORT || 8787;
 const proxyHost = '192.168.1.50:8787';
 
 console.log(`Starting ADVANCED HLS proxy (hardcoded referer)...`);
-
-// Enable CORS for all routes. This will handle the OPTIONS preflight request.
-app.use(cors());
 
 const referer = 'https://embedsports.top/';
 const headers = {
@@ -44,20 +40,37 @@ app.get('/proxy/:b64StreamUrl', async (req, res) => {
             retry: { limit: 2 },
         });
 
-        // We no longer need to set these manually, the cors package handles it.
-        // res.setHeader('Access-Control-Allow-Origin', '*');
-        // res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+        // Set CORS headers manually to revert to the previously working state.
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
 
         if (isManifestRequest) {
             console.log(`  - Successfully fetched manifest. Rewriting segment URLs...`);
             
+            const KEY_TAG = '#EXT-X-KEY:';
             const rewrittenPlaylist = response.body.split('\n').map(line => {
+                // Case 1: Handle decryption key URLs
+                if (line.startsWith(KEY_TAG)) {
+                    const uriMatch = line.match(/URI="([^"]+)"/);
+                    if (uriMatch && uriMatch[1]) {
+                        const keyUri = uriMatch[1];
+                        const fullKeyUrl = new URL(keyUri, streamUrl).href;
+                        const b64KeyUrl = Buffer.from(fullKeyUrl).toString('base64');
+                        const proxiedKeyUrl = `http://${proxyHost}/proxy/${b64KeyUrl}`;
+                        console.log(`  - Rewriting key URL: ${keyUri} -> ${proxiedKeyUrl}`);
+                        return line.replace(keyUri, proxiedKeyUrl);
+                    }
+                }
+
+                // Case 2: Handle segment or sub-playlist URLs
                 if (line.trim().length > 0 && !line.startsWith('#')) {
                     const segmentUrl = new URL(line, streamUrl).href;
                     const b64SegmentUrl = Buffer.from(segmentUrl).toString('base64');
                     // The URL now only needs the segment, no referer query is needed.
                     return `http://${proxyHost}/proxy/${b64SegmentUrl}`;
                 }
+                
+                // Case 3: Pass through all other lines
                 return line;
             }).join('\n');
 
