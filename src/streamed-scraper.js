@@ -48,6 +48,7 @@ export async function scrapeStreamedGames(browser, sportsCategories) {
                 }
             };
         }).filter(Boolean);
+        console.log(streamLinks);
 
         if (streamLinks.length === 0) return null;
 
@@ -84,11 +85,11 @@ function getLeague(game) {
 
 async function getLiveStreams(categories) {
     try {
-        const isDryRun = process.env.DRY_RUN === 'true';
+        const isDebug = process.env.DEBUG === 'true';
         let matches;
 
-        if (isDryRun) {
-            console.log('DRY RUN: Reading from local sample file for Streamed.pk...');
+        if (isDebug) {
+            console.log('DEBUG MODE: Reading from local sample file for Streamed.pk...');
             try {
                 const sampleData = await fs.readFile(SAMPLE_DATA_PATH, 'utf8');
                 matches = JSON.parse(sampleData);

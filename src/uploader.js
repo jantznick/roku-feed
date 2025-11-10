@@ -35,7 +35,7 @@ if (B2_ENDPOINT && B2_REGION && B2_ACCESS_KEY_ID && B2_SECRET_ACCESS_KEY) {
 export async function uploadImages(localImageMap) {
     if (!s3Client) return new Map();
     if (isDryRun) {
-        console.log("DRY RUN: Skipping image uploads.");
+        console.log(`DRY RUN: Skipping image uploads.`);
         // In a dry run, create fake public URLs for feed generation
         const fakePublicUrlMap = new Map();
         for (const [name, localPath] of localImageMap.entries()) {
@@ -93,7 +93,7 @@ export async function uploadImages(localImageMap) {
 export async function uploadFeed(feedContent) {
     if (!s3Client) return;
     if (isDryRun) {
-        console.log("DRY RUN: Skipping feed upload.");
+        console.log(`DRY RUN: Skipping feed upload.`);
         // Even in a dry run, it's useful to save the feed locally to inspect it.
         await fs.writeFile(path.resolve(process.cwd(), 'dist', 'feed.json'), feedContent);
         console.log("Saved feed to dist/feed.json for inspection.");

@@ -12,11 +12,18 @@ export function createFeedItem(game, imageUrl) {
             ? `${stream.provider} (${stream.feedType})`
             : stream.provider;
 
-        return {
+        const videoObject = {
             url: stream.url,
             quality: quality,
             videoType: "HLS",
         };
+        console.log(stream)
+        // If the stream has a Referer header, add it as a 'referer' key
+        if (stream.headers && stream.headers.Referer) {
+            videoObject.referer = stream.headers.Referer;
+        }
+
+        return videoObject;
     });
 
     const startTime = game.time || new Date(game.releaseDate).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
