@@ -1,12 +1,16 @@
 import express from 'express';
 import http from 'http';
 import { gotScraping } from 'got-scraping';
+import cors from 'cors';
 
 const app = express();
 const port = process.env.PORT || 8787;
 const proxyHost = '192.168.1.50:8787';
 
 console.log(`Starting ADVANCED HLS proxy (hardcoded referer)...`);
+
+// Enable CORS for all routes. This will handle the OPTIONS preflight request.
+app.use(cors());
 
 const referer = 'https://embedsports.top/';
 const headers = {
@@ -40,8 +44,9 @@ app.get('/proxy/:b64StreamUrl', async (req, res) => {
             retry: { limit: 2 },
         });
 
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+        // We no longer need to set these manually, the cors package handles it.
+        // res.setHeader('Access-Control-Allow-Origin', '*');
+        // res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
 
         if (isManifestRequest) {
             console.log(`  - Successfully fetched manifest. Rewriting segment URLs...`);
