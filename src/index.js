@@ -50,7 +50,7 @@ async function main() {
     // 2. Scrape for games
     const onHockeyGames = await scrapeMainPage(browser);
 
-    const sportsCategories = ['golf', 'basketball', 'american-football', 'baseball', 'hockey', 'football', 'darts'];
+    const sportsCategories = ['golf', 'basketball', 'american-football', 'baseball', 'hockey', 'football', 'darts', 'motor-sports', 'tennis', 'rugby', 'billiards', 'afl', 'other'];
     const streamedGames = await scrapeStreamedGames(browser, sportsCategories);
 
     // Combine the games from all sources
