@@ -3,7 +3,7 @@ import puppeteer from 'puppeteer';
 import fs from 'fs/promises';
 import path from 'path';
 import { scrapeMainPage, deepScrapeGames } from './scraper.js';
-import { scrapeStreamedGames } from './streamed-scraper.js';
+import { scrapeStreamedGames, scrape247Channels } from './streamed-scraper.js';
 import { getPreviousFeed, compareGames } from './state-manager.js';
 import { generateImages } from './image-generator.js';
 import { downloadPosters } from './poster-downloader.js';
@@ -52,11 +52,14 @@ async function main() {
 
     const sportsCategories = ['golf', 'basketball', 'american-football', 'baseball', 'hockey', 'football', 'darts', 'motor-sports', 'tennis', 'rugby', 'billiards', 'afl', 'other'];
     const streamedGames = await scrapeStreamedGames(browser, sportsCategories);
+    const channels247 = await scrape247Channels(browser);
+
 
     // Combine the games from all sources
-    const allCurrentGames = [...onHockeyGames, ...streamedGames];
+    const allCurrentGames = [...onHockeyGames, ...streamedGames, ...channels247];
     console.log(`\nFound ${onHockeyGames.length} games from onhockey.tv and ${streamedGames.length} games from Streamed.pk.`);
-    console.log(`Total unique games to process: ${allCurrentGames.length}`);
+    console.log(`Found ${channels247.length} 24/7 channels.`);
+    console.log(`Total unique items to process: ${allCurrentGames.length}`);
 
     // Log any new soccer leagues discovered
     await logLeagues(allCurrentGames);
@@ -80,11 +83,12 @@ async function main() {
     // The 'deepScrapeGames' is specific to onhockey.tv, so we only pass its new games.
     const newOnHockeyGames = newGames.filter(game => onHockeyGames.some(g => g.id === game.id));
     const newStreamedGames = newGames.filter(game => streamedGames.some(g => g.id === game.id));
+    const newChannels247Games = newGames.filter(game => channels247.some(g => g.id === game.id));
     
     const newOnHockeyGamesWithStreams = await deepScrapeGames(browser, newOnHockeyGames);
 
     // The new streamed games already have their streams, so we just combine them.
-    const allNewGamesWithStreams = [...newOnHockeyGamesWithStreams, ...newStreamedGames];
+    const allNewGamesWithStreams = [...newOnHockeyGamesWithStreams, ...newStreamedGames, ...newChannels247Games];
 
     // Separate games into those that need an image generated and those that have a poster to download.
     const gamesToGenerate = allNewGamesWithStreams.filter(game => !game.poster);
@@ -133,7 +137,7 @@ async function main() {
     };
 
     const allLeagueKeys = Object.keys(feed).filter(key => Array.isArray(feed[key]));
-    const knownNonSoccerLeagues = new Set(['NHL', 'NCAA D1 Mens', 'BASKETBALL', 'AMERICAN-FOOTBALL', 'BASEBALL', 'GOLF', 'HOCKEY']);
+    const knownNonSoccerLeagues = new Set(['NHL', 'NCAA D1 Mens', 'BASKETBALL', 'AMERICAN-FOOTBALL', 'BASEBALL', 'GOLF', 'HOCKEY', '24/7 Channels']);
     
     const nonSoccerLeagues = allLeagueKeys.filter(key => knownNonSoccerLeagues.has(key)).sort();
     const soccerLeagues = allLeagueKeys.filter(key => !knownNonSoccerLeagues.has(key));

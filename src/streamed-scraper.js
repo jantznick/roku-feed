@@ -24,13 +24,14 @@ export async function scrapeStreamedGames(browser, sportsCategories) {
         console.log(`\nProcessing game: ${game.title} (Category: ${game.category})`);
         game.finalStreamInfo = [];
         for (const embedUrl of game.embedUrls) {
+            // Stop if we have already found 2 valid streams.
+            if (game.finalStreamInfo.length >= 2) {
+                console.log('-- Found 2 streams. Moving to next game.');
+                break;
+            }
             const finalInfo = await getFinalStreamUrl(browser, embedUrl);
             if (finalInfo) {
                 game.finalStreamInfo.push(finalInfo);
-                if (finalInfo.streamUrl.includes('gg.poocloud.in')) {
-                    console.log('-- Found preferred stream domain. Moving to next game.');
-                    break;
-                }
             }
         }
     }
@@ -143,18 +144,13 @@ async function getLiveStreams(categories) {
                 }
 
                 if (allEmbedUrls.length > 0) {
-                    allEmbedUrls.sort((a, b) => {
-                        const aIsPreferred = a.includes('gg.poocloud.in');
-                        const bIsPreferred = b.includes('gg.poocloud.in');
-                        if (aIsPreferred && !bIsPreferred) return -1;
-                        if (!aIsPreferred && bIsPreferred) return 1;
-                        return 0;
-                    });
+                    // Filter out the domain we want to avoid.
+                    const filteredEmbedUrls = allEmbedUrls.filter(url => !url.includes('gg.poocloud.in'));
 
                     allGameStreams.push({
                         title: game.title,
                         category: game.category,
-                        embedUrls: allEmbedUrls,
+                        embedUrls: filteredEmbedUrls, // Use the filtered list
                         date: game.date,
                         poster: game.poster
                     });
@@ -242,4 +238,100 @@ async function findPlayButton(page) {
         }
     }
     return null;
+}
+
+export async function scrape247Channels(browser) {
+    console.log(`\n--- Scraping for 24/7 Channels ---`);
+    const channelMap = {
+        'hockey': ['NHL NETWORK'],
+        'baseball': ['MLB TV', 'Marquee Sports Network'],
+        'basketball': ['TNT', 'NBA TV'],
+        'american-football': ['ESPN USA', 'NFL REDZONE', 'NFL NETWORK']
+    };
+    
+    let allChannels = [];
+
+    for (const sport in channelMap) {
+        try {
+            const response = await fetch(`https://streamed.pk/api/matches/${sport}`);
+            if (!response.ok) continue;
+
+            const sportChannels = await response.json();
+            const targetTitles = new Set(channelMap[sport]);
+
+            const foundChannels = sportChannels.filter(channel => targetTitles.has(channel.title));
+            allChannels.push(...foundChannels);
+
+        } catch (error) {
+            console.error(`  -> Failed to fetch channels for ${sport}:`, error.message);
+        }
+    }
+
+    if (allChannels.length === 0) {
+        console.log('No 24/7 channels found.');
+        return [];
+    }
+
+    console.log(`\n--- Processing ${allChannels.length} found 24/7 channels... ---`);
+    
+    // Use the existing deep scrape logic to get the final stream URLs
+    for (const channel of allChannels) {
+        console.log(`\nProcessing channel: ${channel.title}`);
+        channel.embedUrls = [];
+        for (const source of channel.sources) {
+             try {
+                const streamApiUrl = `${STREAM_API_BASE_URL}/${source.source}/${source.id}`;
+                const streamsResponse = await fetch(streamApiUrl);
+                if (!streamsResponse.ok) continue;
+                const streams = await streamsResponse.json();
+                if (streams && streams.length > 0) {
+                    const filteredUrls = streams.map(s => s.embedUrl).filter(url => !url.includes('gg.poocloud.in'));
+                    channel.embedUrls.push(...filteredUrls);
+                }
+            } catch (e) {}
+        }
+        
+        channel.finalStreamInfo = [];
+        for (const embedUrl of channel.embedUrls) {
+            // Stop if we have already found 2 valid streams.
+            if (channel.finalStreamInfo.length >= 2) {
+                console.log('-- Found 2 streams for channel. Moving to next channel.');
+                break;
+            }
+            const finalInfo = await getFinalStreamUrl(browser, embedUrl);
+            if (finalInfo) {
+                channel.finalStreamInfo.push(finalInfo);
+            }
+        }
+    }
+
+    // Format the channels into the standard game object
+    const formattedChannels = allChannels.map(channel => {
+        const streamLinks = channel.finalStreamInfo.map((info, index) => {
+            if (!info) return null;
+            return {
+                name: `Stream ${index + 1}`,
+                url: info.streamUrl,
+                headers: { Referer: info.referer }
+            };
+        }).filter(Boolean);
+
+        if (streamLinks.length === 0) return null;
+        
+        return {
+            id: channel.id, // Use the stable ID from the API
+            name: channel.title,
+            teams: [channel.title, ''], // For image generation
+            time: '24/7',
+            shortDescription: 'Live 24/7 Channel',
+            releaseDate: new Date().toISOString(),
+            dateAdded: new Date().toISOString(),
+            league: '24/7 Channels', // Assign to the new league
+            poster: channel.poster,
+            streamLinks: streamLinks
+        };
+    }).filter(Boolean);
+
+    console.log(`✅ Found and processed ${formattedChannels.length} 24/7 channels.`);
+    return formattedChannels;
 }
