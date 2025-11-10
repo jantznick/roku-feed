@@ -32,13 +32,16 @@ export function createFeedItem(game, imageUrl) {
 
     const startTime = game.time || new Date(game.releaseDate).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
 
+    // Dynamically set the genre based on the game's league/category.
+    const sportGenre = game.league ? game.league.toLowerCase().replace(/-/g, ' ') : 'general';
+
     return {
         id: game.id,
         title: game.name,
         shortDescription: `${game.league} - ${startTime}`,
         startTime: startTime,
         thumbnail: imageUrl || FALLBACK_THUMBNAIL,
-        genres: ["sports", "hockey"],
+        genres: ["sports", sportGenre],
         releaseDate: game.releaseDate.split('T')[0], // Use the date part of the releaseDate
         content: {
             dateAdded: game.releaseDate, // Use the full releaseDate ISO string
