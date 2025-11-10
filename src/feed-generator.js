@@ -1,4 +1,5 @@
 const FALLBACK_THUMBNAIL = "https://via.placeholder.com/1280x720.png?text=Image+Not+Available";
+const PROXY_SERVER = 'http://192.168.1.50:8787';
 
 /**
  * Creates a single content item for the Roku feed.
@@ -12,18 +13,21 @@ export function createFeedItem(game, imageUrl) {
             ? `${stream.provider} (${stream.feedType})`
             : stream.provider;
 
-        const videoObject = {
-            url: stream.url,
+        let streamUrl = stream.url;
+        
+        // If the stream has a Referer header, rewrite the URL to use the proxy.
+        if (stream.headers && stream.headers.Referer) {
+            console.log(`-- Found referer for stream. Rewriting URL for hardcoded proxy: ${stream.url}`);
+            const b64StreamUrl = Buffer.from(stream.url).toString('base64');
+            // The proxy is now hardcoded, so we don't need to pass the referer in the query.
+            streamUrl = `${PROXY_SERVER}/proxy/${b64StreamUrl}`;
+        }
+
+        return {
+            url: streamUrl,
             quality: quality,
             videoType: "HLS",
         };
-        console.log(stream)
-        // If the stream has a Referer header, add it as a 'referer' key
-        if (stream.headers && stream.headers.Referer) {
-            videoObject.referer = stream.headers.Referer;
-        }
-
-        return videoObject;
     });
 
     const startTime = game.time || new Date(game.releaseDate).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });

@@ -1,0 +1,15 @@
+{
+  "name": "hls-stream-proxy",
+  "version": "1.0.0",
+  "description": "A proxy for HLS streams to add a referer header.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@warren-bank/hls-proxy": "github:warren-bank/HLS-Proxy#v03",
+    "express": "^5.1.0"
+  }
+}
