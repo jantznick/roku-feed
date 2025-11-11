@@ -13,3 +13,4 @@ data/soccer-leagues.log
 data/streamed-live-sample.json
 data/streamstable.html
 latest-scrape-output.html
+*.zip
