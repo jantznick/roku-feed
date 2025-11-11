@@ -5,3 +5,11 @@
 /node_modules
 /old
 */node_modules
+latest-scrape-output.html
+live_streams.json
+package.json
+data/gamestable.html
+data/soccer-leagues.log
+data/streamed-live-sample.json
+data/streamstable.html
+latest-scrape-output.html
