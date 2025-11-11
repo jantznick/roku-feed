@@ -15,12 +15,43 @@ end function
 ' Helper function convert seconds to mm:ss format
 ' getTime(138) returns 2:18
 function GetTime(length as Integer) as String
-    minutes = (length \ 60).ToStr()
-    seconds = length MOD 60
-    if seconds < 10
-       seconds = "0" + seconds.ToStr()
+    hours = length \ 3600
+    minutes = (length \ 60) MOD 60
+
+    if hours > 0
+        minutesStr = minutes.ToStr()
+        if minutes < 10
+            minutesStr = "0" + minutesStr
+        end if
+        return hours.ToStr() + ":" + minutesStr
     else
-       seconds = seconds.ToStr()
+        minutesStr = minutes.ToStr()
+        secondsStr = (length mod 60).toStr()
+        if (length mod 60) < 10
+            secondsStr = "0" + secondsStr
+        end if
+        return minutesStr + ":" + secondsStr
     end if
-    return minutes + ":" + seconds
+end function
+
+function Get12HourTime(dt as Object) as String
+    hours = dt.GetHours()
+    minutes = dt.GetMinutes()
+    ampm = "AM"
+    if hours >= 12
+        ampm = "PM"
+    end if
+    if hours > 12
+        hours = hours - 12
+    end if
+    if hours = 0
+        hours = 12
+    end if
+    
+    minutesStr = minutes.ToStr()
+    if minutes < 10
+        minutesStr = "0" + minutesStr
+    end if
+    
+    return hours.ToStr() + ":" + minutesStr + " " + ampm
 end function

@@ -6,5 +6,6 @@
         <field id="content" type="node" />
     </interface>
 
+    <script type="text/brightscript" uri="pkg:/source/utils.brs" />
     <script type="text/brightscript" uri="MainLoaderTask.brs" />
 </component>

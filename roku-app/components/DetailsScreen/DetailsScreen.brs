@@ -14,13 +14,6 @@ function Init()
     m.timeLabel = m.top.FindNode("timeLabel")
     m.titleLabel = m.top.FindNode("titleLabel")
     m.releaseLabel = m.top.FindNode("releaseLabel")
-    
-    ' create buttons
-    result = []
-    for each button in ["Play"] ' buttons list contains only "Play" button for now
-        result.Push({title : button})
-    end for
-    m.buttons.content = ContentListToSimpleNode(result) ' set list of buttons for DetailsScreen
 end function
 
 sub OnVisibleChange() ' invoked when DetailsScreen visibility is changed
@@ -33,11 +26,54 @@ end sub
 
 ' Populate content details information
 sub SetDetailsContent(content as Object)
-    m.description.text = content.description ' set description of content
+    m.description.text = content.description
     m.poster.uri = content.hdPosterUrl ' set url of content poster
-    m.timeLabel.text = GetTime(content.length) ' set length of content
+    
+    ' Check if the game is live and update the time label accordingly
+    if content.streamContent <> invalid and content.streamContent.dateAdded <> invalid
+        startTime = CreateObject("roDateTime")
+        startTime.FromISO8601String(content.streamContent.dateAdded)
+        startTimeSeconds = startTime.AsSeconds()
+        
+        now = CreateObject("roDateTime")
+        now.Mark()
+        nowSeconds = now.AsSeconds()
+        
+        durationSeconds = content.length
+        
+        if nowSeconds > startTimeSeconds and nowSeconds < (startTimeSeconds + durationSeconds)
+            m.timeLabel.text = "LIVE"
+        else
+            m.timeLabel.text = "Duration: " + GetTime(content.length)
+        end if
+    else
+        m.timeLabel.text = "Duration: " + GetTime(content.length)
+    end if
+
     m.titleLabel.text = content.title ' set title of content
-    m.releaseLabel.text = content.releaseDate ' set release date of content
+    
+    ' Display the start time in the user's local timezone
+    if content.streamContent <> invalid and content.streamContent.dateAdded <> invalid
+        dt = CreateObject("roDateTime")
+        dt.FromISO8601String(content.streamContent.dateAdded)
+        dt.ToLocalTime()
+        timeStr = Get12HourTime(dt)
+        m.releaseLabel.text = "Start Time: " + dt.AsDateString("long-date") + " at " + timeStr
+    else
+        m.releaseLabel.text = content.releaseDate ' set release date of content
+    end if
+
+    ' Create buttons for each video stream
+    result = []
+    if content.streamContent <> invalid and content.streamContent.videos <> invalid
+        for each video in content.streamContent.videos
+            result.Push({title : video.quality})
+        end for
+    else
+        ' Fallback to a single play button if no streams are found
+        result.Push({title : "Play"})
+    end if
+    m.buttons.content = ContentListToSimpleNode(result) ' set list of buttons for DetailsScreen
 end sub
 
 sub OnJumpToItem() ' invoked when jumpToItem field is populated
@@ -59,6 +95,11 @@ end sub
 function OnkeyEvent(key as String, press as Boolean) as Boolean
     result = false
     if press
+        if key = "up" or key = "down"
+            ' let the LabelList handle up/down navigation
+            return false
+        end if
+
         currentItem = m.top.itemFocused ' position of currently focused item
         ' handle "left" button keypress
         if key = "left"

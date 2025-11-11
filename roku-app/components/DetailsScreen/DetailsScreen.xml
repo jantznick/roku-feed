@@ -52,13 +52,14 @@
             <Group>
                 <LabelList
                     id="buttons"
-                    numRows="3"
+                    numRows="5"
                     itemSpacing="[0,10]"
                     itemSize="[593, 48]"
+                    wrap="false"
                 />
                 <LayoutGroup
                     itemSpacings="[40]"
-                    translation="[0, 208]">
+                    translation="[0, 280]">
                     <Label
                         id="descriptionLabel"
                         wrap="true"
@@ -67,8 +68,8 @@
                     />
                     <Label
                         id="releaseLabel"
-                        wrap="false"
-                        width="520"
+                        wrap="true"
+                        width="593"
                     />
                 </LayoutGroup>
             </Group>

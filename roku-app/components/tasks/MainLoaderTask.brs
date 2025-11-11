@@ -53,7 +53,26 @@ function GetItemData(video as Object) as Object
     if video.longDescription <> invalid
         item.description = video.longDescription
     else
-        item.description = video.shortDescription
+        descriptionStr = video.shortDescription
+        dashPosition = descriptionStr.Instr(0, " - ")
+        leaguePart = descriptionStr
+        if dashPosition > 0
+            leaguePart = descriptionStr.Left(dashPosition)
+        end if
+
+        localTimeStr = ""
+        if video.content <> invalid and video.content.dateAdded <> invalid
+            dt = CreateObject("roDateTime")
+            dt.FromISO8601String(video.content.dateAdded)
+            dt.ToLocalTime()
+            localTimeStr = Get12HourTime(dt)
+        end if
+
+        if localTimeStr <> ""
+            item.description = leaguePart + " - Start Time: " + localTimeStr
+        else
+            item.description = video.shortDescription
+        end if
     end if
     item.hdPosterURL = video.thumbnail
     item.title = video.title
@@ -62,9 +81,14 @@ function GetItemData(video as Object) as Object
     if video.content <> invalid
         ' populate length of content to be displayed on the GridScreen
         item.length = video.content.duration
+        
         ' populate meta-data for playback
+        ' For the default play button, we'll still use the first stream
         item.url = video.content.videos[0].url
         item.streamFormat = video.content.videos[0].videoType
+        
+        ' Pass the entire content object to be used by the details screen
+        item.streamContent = video.content
     end if
     return item
 end function
