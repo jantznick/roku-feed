@@ -18,10 +18,19 @@ export function createFeedItem(game, imageUrl) {
             // The proxy is now hardcoded, so we don't need to pass the referer in the query.
             streamUrl = `${PROXY_SERVER}/proxy/${b64StreamUrl}`;
         }
+        
+        // Create a more descriptive quality string with the source name and domain.
+        let quality = stream.name;
+        try {
+            const domain = new URL(stream.url).hostname;
+            quality = `${stream.name} (${domain})`;
+        } catch (e) {
+            // If the URL is invalid for some reason, just use the stream name.
+        }
 
         return {
             url: streamUrl,
-            quality: stream.name, // Use the source name (e.g., 'delta', 'charlie') as the quality
+            quality: quality,
             videoType: "HLS",
         };
     });

@@ -63,7 +63,7 @@ export async function scrapeStreamedGames(browser, sportsCategories) {
         const streamLinks = game.finalStreamInfo.map((info, index) => {
             if (!info) return null;
             return {
-                name: `Stream ${index + 1}`,
+                name: info.sourceName || `Stream ${index + 1}`, // Fallback for the name
                 url: info.streamUrl,
                 headers: {
                     Referer: info.referer
@@ -357,11 +357,11 @@ export async function scrape247Channels(browser) {
 
     // Format the channels into the standard game object
     const formattedChannels = allChannels.map(channel => {
-        const streamLinks = channel.finalStreamInfo.map(info => {
+        const streamLinks = channel.finalStreamInfo.map((info, index) => {
             if (!info) return null;
             return {
-                name: info.sourceName, // Use the source name
-                url: info.url,
+                name: info.sourceName || `Stream ${index + 1}`, // Fallback for the name
+                url: info.streamUrl,
                 headers: { Referer: info.referer }
             };
         }).filter(Boolean);
