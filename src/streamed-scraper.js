@@ -155,8 +155,7 @@ async function getLiveStreams(categories) {
                         const streams = await streamsResponse.json();
 
                         if (streams && streams.length > 0) {
-                            const embedUrls = streams.map(stream => stream.embedUrl);
-                            allEmbedUrls.push(...embedUrls);
+                            allEmbedUrls.push(...streams.map(s => s.embedUrl));
                         }
                     } catch (sourceError) {
                         // Suppress verbose warnings during normal operation
@@ -170,7 +169,7 @@ async function getLiveStreams(categories) {
                     allGameStreams.push({
                         title: game.title,
                         category: game.category,
-                        embedUrls: filteredEmbedUrls, // Use the filtered list
+                        embedUrls: filteredEmbedUrls,
                         date: game.date,
                         poster: game.poster
                     });
