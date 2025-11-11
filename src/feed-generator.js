@@ -9,10 +9,6 @@ const PROXY_SERVER = 'http://192.168.1.50:8787';
  */
 export function createFeedItem(game, imageUrl) {
     const videos = game.streamLinks.map(stream => {
-        const quality = stream.feedType && stream.feedType !== 'main'
-            ? `${stream.provider} (${stream.feedType})`
-            : stream.provider;
-
         let streamUrl = stream.url;
         
         // If the stream has a Referer header, rewrite the URL to use the proxy.
@@ -25,7 +21,7 @@ export function createFeedItem(game, imageUrl) {
 
         return {
             url: streamUrl,
-            quality: quality,
+            quality: stream.name, // Use the source name (e.g., 'delta', 'charlie') as the quality
             videoType: "HLS",
         };
     });

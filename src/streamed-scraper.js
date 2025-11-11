@@ -44,12 +44,13 @@ export async function scrapeStreamedGames(browser, sportsCategories) {
         console.log(`\nProcessing game: ${game.title} (Category: ${game.category})`);
         game.finalStreamInfo = [];
         for (const embedUrl of game.embedUrls) {
-            // Stop if we have already found 2 valid streams.
-            if (game.finalStreamInfo.length >= 2) {
-                console.log('-- Found 2 streams. Moving to next game.');
+            // Stop if we have already found 5 valid streams.
+            if (game.finalStreamInfo.length >= 5) {
+                console.log('-- Found 5 streams. Moving to next game.');
                 break;
             }
-            const finalInfo = await getFinalStreamUrl(browser, embedUrl);
+            // Pass the source name along with the URL
+            const finalInfo = await getFinalStreamUrl(browser, embedUrl.url, embedUrl.sourceName);
             if (finalInfo) {
                 game.finalStreamInfo.push(finalInfo);
             }
@@ -149,13 +150,16 @@ async function getLiveStreams(categories) {
                     try {
                         const streamApiUrl = `${STREAM_API_BASE_URL}/${source.source}/${source.id}`;
                         const streamsResponse = await fetch(streamApiUrl);
-                        if (!streamsResponse.ok) {
-                            continue;
-                        }
+                        if (!streamsResponse.ok) continue;
                         const streams = await streamsResponse.json();
 
                         if (streams && streams.length > 0) {
-                            allEmbedUrls.push(...streams.map(s => s.embedUrl));
+                            // Now store an object with both the URL and the source name
+                            const embedInfos = streams.map(stream => ({
+                                url: stream.embedUrl,
+                                sourceName: source.source // Keep track of the source name
+                            }));
+                            allEmbedUrls.push(...embedInfos);
                         }
                     } catch (sourceError) {
                         // Suppress verbose warnings during normal operation
@@ -163,13 +167,17 @@ async function getLiveStreams(categories) {
                 }
 
                 if (allEmbedUrls.length > 0) {
-                    // Filter out the domain we want to avoid.
-                    const filteredEmbedUrls = allEmbedUrls.filter(url => !url.includes('gg.poocloud.in'));
+                    // Deprioritize 'gg.poocloud.in' by moving them to the end of the array.
+                    allEmbedUrls.sort((a, b) => {
+                        const aIsPoo = a.url.includes('gg.poocloud.in');
+                        const bIsPoo = b.url.includes('gg.poocloud.in');
+                        return aIsPoo - bIsPoo;
+                    });
 
                     allGameStreams.push({
                         title: game.title,
                         category: game.category,
-                        embedUrls: filteredEmbedUrls,
+                        embedUrls: allEmbedUrls,
                         date: game.date,
                         poster: game.poster
                     });
@@ -187,8 +195,8 @@ async function getLiveStreams(categories) {
     }
 }
 
-async function getFinalStreamUrl(browser, embedUrl) {
-    console.log(`-- Navigating to embed URL: ${embedUrl}`);
+export async function getFinalStreamUrl(browser, embedUrl, sourceName) {
+    console.log(`-- Navigating to embed URL: ${embedUrl} (Source: ${sourceName})`);
     const page = await browser.newPage();
     await page.setCacheEnabled(false);
     await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36');
@@ -201,7 +209,8 @@ async function getFinalStreamUrl(browser, embedUrl) {
                 page.off('request', requestListener);
                 resolve({
                     streamUrl: url,
-                    referer: request.headers().referer
+                    referer: request.headers().referer,
+                    sourceName: sourceName // Pass the source name through
                 });
             }
         };
@@ -316,20 +325,30 @@ export async function scrape247Channels(browser) {
                 if (!streamsResponse.ok) continue;
                 const streams = await streamsResponse.json();
                 if (streams && streams.length > 0) {
-                    const filteredUrls = streams.map(s => s.embedUrl).filter(url => !url.includes('gg.poocloud.in'));
-                    channel.embedUrls.push(...filteredUrls);
+                    const embedInfos = streams.map(s => ({
+                        url: s.embedUrl,
+                        sourceName: source.source
+                    })).filter(info => !info.url.includes('gg.poocloud.in'));
+                    channel.embedUrls.push(...embedInfos);
                 }
             } catch (e) {}
         }
         
+        // Deprioritize 'gg.poocloud.in' for channels as well.
+        channel.embedUrls.sort((a, b) => {
+            const aIsPoo = a.url.includes('gg.poocloud.in');
+            const bIsPoo = b.url.includes('gg.poocloud.in');
+            return aIsPoo - bIsPoo;
+        });
+
         channel.finalStreamInfo = [];
         for (const embedUrl of channel.embedUrls) {
-            // Stop if we have already found 2 valid streams.
-            if (channel.finalStreamInfo.length >= 2) {
-                console.log('-- Found 2 streams for channel. Moving to next channel.');
+            // Stop if we have already found 5 valid streams.
+            if (channel.finalStreamInfo.length >= 5) {
+                console.log('-- Found 5 streams for channel. Moving to next channel.');
                 break;
             }
-            const finalInfo = await getFinalStreamUrl(browser, embedUrl);
+            const finalInfo = await getFinalStreamUrl(browser, embedUrl.url, embedUrl.sourceName);
             if (finalInfo) {
                 channel.finalStreamInfo.push(finalInfo);
             }
@@ -338,11 +357,11 @@ export async function scrape247Channels(browser) {
 
     // Format the channels into the standard game object
     const formattedChannels = allChannels.map(channel => {
-        const streamLinks = channel.finalStreamInfo.map((info, index) => {
+        const streamLinks = channel.finalStreamInfo.map(info => {
             if (!info) return null;
             return {
-                name: `Stream ${index + 1}`,
-                url: info.streamUrl,
+                name: info.sourceName, // Use the source name
+                url: info.url,
                 headers: { Referer: info.referer }
             };
         }).filter(Boolean);
