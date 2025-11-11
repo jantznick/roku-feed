@@ -67,6 +67,14 @@ const gradients = [
     'linear-gradient(45deg, #8e44ad, #3498db)',
     'linear-gradient(to right, #00f260, #0575e6)',
     'linear-gradient(45deg, #e74c3c, #2980b9)',
+    'linear-gradient(to right, #6a11cb, #2575fc)',
+    'linear-gradient(to right, #ec008c, #fc6767)',
+    'linear-gradient(to right, #00c9ff, #92fe9d)',
+    'linear-gradient(to right, #ff4e50, #f9d423)',
+    'linear-gradient(120deg, #d4fc79, #96e6a1)',
+    'linear-gradient(120deg, #84fab0, #8fd3f4)',
+    'linear-gradient(to top, #30cfd0, #330867)',
+    'linear-gradient(to right, #fa709a, #fee140)',
 ];
 
 // Simple, clean HTML template for the poster.
@@ -102,6 +110,7 @@ const getPosterHtml = (team1, team2, league, gradient, team1Logo, team2Logo, lea
             width: 450px;
             height: 450px;
             display: flex;
+            flex-grow: 1;
             flex-direction: column;
             justify-content: center;
             align-items: center;
@@ -129,11 +138,11 @@ const getPosterHtml = (team1, team2, league, gradient, team1Logo, team2Logo, lea
             ${team1Logo ? `<img src="${team1Logo}" class="logo">` : ''}
             <div class="team-name">${team1}</div>
         </div>
-        <div class="vs">at</div>
-        <div class="team-container">
-            ${team2Logo ? `<img src="${team2Logo}" class="logo">` : ''}
+        ${team2 && `<div class="vs">at</div>
+            <div class="team-container">
+                ${team2Logo ? `<img src="${team2Logo}" class="logo">` : ''}
             <div class="team-name">${team2}</div>
-        </div>
+        </div>`}
     </div>
     ${streamCount > 0 ? `<div class="stream-count">${streamCount} Live Stream${streamCount > 1 ? 's' : ''}</div>` : ''}
 </body>
