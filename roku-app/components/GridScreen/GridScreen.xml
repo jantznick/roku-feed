@@ -11,6 +11,14 @@
         <field id="jumpToRowItem" type="intarray" alias="RowList.jumpToRowItem" />
     </interface>
     <children>
+        <Label
+            id="headerLabel"
+            text="We Like Sports"
+            width="1280"
+            horizAlign="left"
+            translation="[80, 60]">
+            <Font role="font" size="48" />
+        </Label>
          <!-- Label with title and length of content -->
         <Label
 	        id="titleLabel"

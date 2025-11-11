@@ -15,40 +15,49 @@
         <field id="buttonSelected" type="integer" alias="buttons.itemSelected" />
     </interface>
     <children>
+        <Label
+            id="headerLabel"
+            text="We Like Sports"
+            width="1280"
+            horizAlign="left"
+            translation="[80, 60]">
+            <Font role="font" size="48" />
+        </Label>
         <LayoutGroup
             translation="[1166, 154]"
             layoutDirection="horiz"
             horizAlignment="right"
             itemSpacings="[40]">
-            <LayoutGroup
-                itemSpacings="[14, 10]"
-                layoutDirection="vert">
+            <Group>
                 <Rectangle
                     width="357"
                     height="201"
-                    color="0xFFFFFF00">
-                    <Poster
-                        id="poster"
-                        width="357"
-                        loadWidth="357"
-                        height="201"
-                        loadHeight="201"
-                        loadDisplayMode="scaleToFit"
-                    />
-                </Rectangle>
+                    color="0x00000088"
+                    translation="[5, 5]"
+                />
+                <Poster
+                    id="poster"
+                    width="357"
+                    loadWidth="357"
+                    height="201"
+                    loadHeight="201"
+                    loadDisplayMode="scaleToFit"
+                />
                 <Label
                     id="titleLabel"
                     width="357"
                     wrap="false"
                     horizAlign="right"
+                    translation="[0, 211]"
                 />
                 <Label
                     id="timeLabel"
                     width="357"
                     wrap="false"
                     horizAlign="right"
+                    translation="[0, 241]"
                 />
-            </LayoutGroup>
+            </Group>
             <Group>
                 <LabelList
                     id="buttons"
