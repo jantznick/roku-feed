@@ -1,10 +1,30 @@
 import puppeteer from 'puppeteer';
 import fs from 'fs/promises';
 import path from 'path';
+import Fuse from 'fuse.js';
 
 const LIVE_MATCHES_URL = 'https://streamed.pk/api/matches/live';
 const STREAM_API_BASE_URL = 'https://streamed.pk/api/stream';
 const SAMPLE_DATA_PATH = path.resolve(process.cwd(), 'data', 'streamed-live-sample.json');
+
+/**
+ * Sanitizes a string to be URL- and filename-safe.
+ * @param {string} text 
+ * @returns {string}
+ */
+function slugify(text) {
+  if (!text) return '';
+  return text
+    .toString()
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, '-') // Replace spaces with -
+    .replace(/[/\\?%*:|"<>]/g, '-') // Replace invalid filename chars with -
+    .replace(/[^\w-]+/g, '') // Remove all non-word chars except hyphen
+    .replace(/--+/g, '-') // Replace multiple hyphens with a single one
+    .replace(/^-+|-+$/g, ''); // Trim hyphens from start/end
+}
+
 
 // This function is now exported and will be called by index.js
 export async function scrapeStreamedGames(browser, sportsCategories) {
@@ -49,7 +69,6 @@ export async function scrapeStreamedGames(browser, sportsCategories) {
                 }
             };
         }).filter(Boolean);
-        console.log(streamLinks);
 
         if (streamLinks.length === 0) return null;
 
@@ -60,7 +79,8 @@ export async function scrapeStreamedGames(browser, sportsCategories) {
 
         return {
             // A stable ID is crucial for state management to detect new/removed games.
-            id: `${game.title.replace(/\s+/g, '-')}-${new Date(game.date || Date.now()).toISOString().slice(0, 10)}`,
+            // We now slugify the title to ensure it's a valid filename.
+            id: `${slugify(game.title)}-${new Date(game.date || Date.now()).toISOString().slice(0, 10)}`,
             name: game.title,
             teams: teams,
             time: new Date(game.date || Date.now()).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
@@ -250,6 +270,7 @@ export async function scrape247Channels(browser) {
     };
     
     let allChannels = [];
+    const allTargetTitles = Object.values(channelMap).flat();
 
     for (const sport in channelMap) {
         try {
@@ -257,11 +278,22 @@ export async function scrape247Channels(browser) {
             if (!response.ok) continue;
 
             const sportChannels = await response.json();
-            const targetTitles = new Set(channelMap[sport]);
+            const targetTitles = channelMap[sport];
 
-            const foundChannels = sportChannels.filter(channel => targetTitles.has(channel.title));
-            allChannels.push(...foundChannels);
-
+            // For each channel from the API, check if its title includes one of our targets.
+            for (const channel of sportChannels) {
+                for (const targetTitle of targetTitles) {
+                    // Use a case-insensitive check to ensure a match.
+                    if (channel.title.toLowerCase().includes(targetTitle.toLowerCase())) {
+                        // If it matches, assign the clean title and add it.
+                        channel.cleanTitle = targetTitle;
+                        allChannels.push(channel);
+                        console.log(`  -> Matched API title "${channel.title}" to target "${targetTitle}"`);
+                        // Break to avoid matching the same channel multiple times if titles overlap
+                        break; 
+                    }
+                }
+            }
         } catch (error) {
             console.error(`  -> Failed to fetch channels for ${sport}:`, error.message);
         }
@@ -318,14 +350,14 @@ export async function scrape247Channels(browser) {
 
         if (streamLinks.length === 0) return null;
         
-        // Override the poster with our hardcoded version if it exists in the map.
-        const customLogo = channelLogoMap[channel.title];
+        // Override the poster with our hardcoded version using the clean title.
+        const customLogo = channelLogoMap[channel.cleanTitle]; // Use the clean title for lookup
         const posterUrl = customLogo ? `${LOGO_BASE_URL}${customLogo}` : channel.poster;
 
         return {
-            id: channel.id, // Use the stable ID from the API
-            name: channel.title,
-            teams: [channel.title, ''], // For image generation
+            id: channel.cleanTitle.replace(/\s+/g, '-'), // Use the clean, slugified title for a stable ID
+            name: channel.cleanTitle, // Use the clean title for the feed
+            teams: [channel.cleanTitle, ''], // For image generation
             time: '24/7',
             shortDescription: 'Live 24/7 Channel',
             releaseDate: new Date().toISOString(),
@@ -336,8 +368,11 @@ export async function scrape247Channels(browser) {
         };
     }).filter(Boolean);
 
-    console.log(`✅ Found and processed ${formattedChannels.length} 24/7 channels.`);
-    return formattedChannels;
+    // Remove duplicates that might arise if a channel is matched more than once.
+    const uniqueChannels = Array.from(new Map(formattedChannels.map(c => [c.id, c])).values());
+
+    console.log(`✅ Found and processed ${uniqueChannels.length} unique 24/7 channels.`);
+    return uniqueChannels;
 }
 
 const channelLogoMap = {
