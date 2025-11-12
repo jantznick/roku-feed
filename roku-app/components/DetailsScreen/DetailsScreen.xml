@@ -15,14 +15,14 @@
         <field id="buttonSelected" type="integer" alias="buttons.itemSelected" />
     </interface>
     <children>
-        <Label
+        <!-- <Label
             id="headerLabel"
             text="We Like Sports"
             width="1280"
             horizAlign="left"
             translation="[80, 60]">
             <Font role="font" size="48" />
-        </Label>
+        </Label> -->
         <LayoutGroup
             translation="[1166, 154]"
             layoutDirection="horiz"

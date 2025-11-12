@@ -11,14 +11,14 @@
         <field id="jumpToRowItem" type="intarray" alias="RowList.jumpToRowItem" />
     </interface>
     <children>
-        <Label
+        <!-- <Label
             id="headerLabel"
-            text="We Like Sports"
+            logoUri="https://f004.backblazeb2.com/file/roku-hockey/channel-header.png"
             width="1280"
             horizAlign="left"
             translation="[80, 60]">
             <Font role="font" size="48" />
-        </Label>
+        </Label> -->
          <!-- Label with title and length of content -->
         <Label
 	        id="titleLabel"

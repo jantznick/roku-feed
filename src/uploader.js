@@ -154,3 +154,46 @@ export async function deleteImages(removedGames) {
         console.error("Error deleting objects from B2:", error);
     }
 }
+
+/**
+ * Uploads a single file to a specified path in Backblaze B2.
+ * @param {string} localPath - The local path of the file to upload.
+ * @param {string} remotePath - The destination path (key) in the B2 bucket.
+ */
+export async function uploadFile(localPath, remotePath) {
+    if (!s3Client) {
+        // Throw an error to ensure the calling script can catch it.
+        throw new Error("S3 client not configured, cannot upload file.");
+    }
+    if (isDryRun) {
+        console.log(`DRY RUN: Skipping upload of ${localPath} to ${remotePath}.`);
+        return;
+    }
+
+    console.log(`Uploading ${localPath} to ${remotePath}...`);
+    try {
+        const fileContent = await fs.readFile(localPath);
+
+        const extension = path.extname(localPath).toLowerCase();
+        let contentType = 'application/octet-stream'; // Default
+        if (extension === '.png') {
+            contentType = 'image/png';
+        } else if (extension === '.jpg' || extension === '.jpeg') {
+            contentType = 'image/jpeg';
+        } else if (extension === '.json') {
+            contentType = 'application/json';
+        }
+
+        const command = new PutObjectCommand({
+            Bucket: B2_BUCKET_NAME,
+            Key: remotePath,
+            Body: fileContent,
+            ContentType: contentType,
+        });
+        await s3Client.send(command);
+        console.log(`  -> Successfully uploaded ${remotePath}`);
+    } catch (error) {
+        console.error(`  -> Error uploading ${remotePath}:`, error);
+        throw error; // Re-throw the error to be caught by the calling script
+    }
+}
