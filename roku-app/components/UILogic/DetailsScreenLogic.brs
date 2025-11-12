@@ -18,6 +18,10 @@ sub OnButtonSelected(event) ' invoked when button in DetailsScreen is pressed
     buttonIndex = event.getData() ' index of selected button
     selectedItem = details.itemFocused
     
+    ' Store the currently focused item index on the global node.
+    ' This ensures that we can return to the correct item if video playback fails.
+    m.global.SetField("lastFocusedItem", selectedItem, true)
+
     ' get the specific item that is in focus
     itemNode = content.getChild(selectedItem)
     
@@ -54,6 +58,15 @@ end sub
 sub OnDetailsScreenVisibilityChanged(event as Object) ' invoked when DetailsScreen "visible" field is changed
     visible = event.GetData()
     detailsScreen = event.GetRoSGNode()
+
+    ' If the screen is becoming visible again (e.g., after a video player closes)
+    if visible = true and m.global.lastFocusedItem <> invalid
+        ' Restore the focus to the item that was selected before playback.
+        detailsScreen.jumpToItem = m.global.lastFocusedItem
+        ' Clear the field so it doesn't interfere with normal navigation.
+        m.global.RemoveField("lastFocusedItem")
+    end if
+
     ' update GridScreen's focus when navigate back from DetailsScreen
     if visible = false
         m.GridScreen.jumpToRowItem = [m.selectedIndex[0], detailsScreen.itemFocused]

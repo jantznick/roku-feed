@@ -53,13 +53,19 @@ end sub
 
 function GetItemData(video as Object) as Object
     item = {}
+    lastUpdatedStr = ""
+    localTimeStr = ""
+    descriptionStr = ""
+    leaguePart = ""
+    dashPosition = 0
+    dt = invalid
+
     ' populate some standard content metadata fields to be displayed on the GridScreen
     ' https://developer.roku.com/docs/developer-program/getting-started/architecture/content-metadata.md
     if video.longDescription <> invalid
         item.description = video.longDescription
     else
         ' Construct the description and append the last updated time.
-        dim lastUpdatedStr as String = ""
         if m.global.lastUpdated <> invalid
             dt = CreateObject("roDateTime")
             dt.FromISO8601String(m.global.lastUpdated)
@@ -75,7 +81,6 @@ function GetItemData(video as Object) as Object
             leaguePart = descriptionStr.Left(dashPosition)
         end if
 
-        localTimeStr = ""
         if video.content <> invalid and video.content.dateAdded <> invalid
             dt = CreateObject("roDateTime")
             dt.FromISO8601String(video.content.dateAdded)

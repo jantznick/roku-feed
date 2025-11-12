@@ -14,6 +14,9 @@ function Init()
     m.timeLabel = m.top.FindNode("timeLabel")
     m.titleLabel = m.top.FindNode("titleLabel")
     m.releaseLabel = m.top.FindNode("releaseLabel")
+    
+    ' Observe the focused item on the button list to dynamically update the description
+    m.buttons.ObserveField("itemFocused", "OnStreamButtonFocused")
 end function
 
 sub OnVisibleChange() ' invoked when DetailsScreen visibility is changed
@@ -24,9 +27,44 @@ sub OnVisibleChange() ' invoked when DetailsScreen visibility is changed
     end if
 end sub
 
+' This is a new observer that fires when the user highlights a different stream button
+sub OnStreamButtonFocused()
+    ' Get the data for the currently highlighted button
+    focusedButtonIndex = m.buttons.itemFocused
+    if focusedButtonIndex < 0 or focusedButtonIndex >= m.buttons.content.getChildCount()
+        return
+    end if
+    
+    buttonData = m.buttons.content.getChild(focusedButtonIndex)
+
+    ' The base description is stored on the description label's "baseText" field
+    baseDescription = m.description.baseText
+
+    ' Format the confirmedAt timestamp for display.
+    confirmedTimeStr = ""
+    if buttonData.confirmedAt <> invalid
+        dt = CreateObject("roDateTime")
+        dt.FromISO8601String(buttonData.confirmedAt)
+        dt.ToLocalTime()
+        ' Get HH:MM:SS AM/PM
+        confirmedTimeStr = Get12HourTimeWithSeconds(dt)
+    end if
+
+    newDescription = baseDescription
+    if confirmedTimeStr <> ""
+        ' Add a couple of newlines to separate it from the main description
+        newDescription = newDescription + chr(10) + chr(10) + "Stream Confirmed: " + confirmedTimeStr
+    end if
+    
+    m.description.text = newDescription
+end sub
+
 ' Populate content details information
 sub SetDetailsContent(content as Object)
+    ' Store the original description in a custom field so we can reuse it
+    m.description.baseText = content.description
     m.description.text = content.description
+
     m.poster.uri = content.hdPosterUrl ' set url of content poster
     
     ' Check if the game is live and update the time label accordingly
@@ -67,13 +105,15 @@ sub SetDetailsContent(content as Object)
     result = []
     if content.streamContent <> invalid and content.streamContent.videos <> invalid
         for each video in content.streamContent.videos
-            result.Push({title : video.quality})
+            ' Pass the full video object to the node, not just the title
+            video.title = video.quality
+            result.Push(video)
         end for
     else
         ' Fallback to a single play button if no streams are found
         result.Push({title : "Play"})
     end if
-    m.buttons.content = ContentListToSimpleNode(result) ' set list of buttons for DetailsScreen
+    m.buttons.content = ContentListToNode(result) ' set list of buttons for DetailsScreen
 end sub
 
 sub OnJumpToItem() ' invoked when jumpToItem field is populated
@@ -114,4 +154,42 @@ function OnkeyEvent(key as String, press as Boolean) as Boolean
         end if
     end if
     return result
+end function
+
+' Helper function to get a formatted 12-hour time string with seconds
+function Get12HourTimeWithSeconds(dt as Object) as String
+    hour = dt.GetHours()
+    minutes = dt.GetMinutes()
+    seconds = dt.GetSeconds()
+    ampm = "AM"
+    if hour >= 12
+        ampm = "PM"
+    end if
+    if hour > 12
+        hour = hour - 12
+    end if
+    if hour = 0
+        hour = 12
+    end if
+    return Str(hour) + ":" + PadZero(minutes) + ":" + PadZero(seconds) + " " + ampm
+end function
+
+' Manually pads a number with a leading zero if it is less than 10.
+function PadZero(num as Integer) as String
+    if num < 10
+        return "0" + Str(num)
+    else
+        return Str(num)
+    end if
+end function
+
+' Helper function to convert a list of objects to a ContentNode
+function ContentListToNode(contentList as Object) as Object
+    node = CreateObject("roSGNode", "ContentNode")
+    for each item in contentList
+        itemNode = CreateObject("roSGNode", "ContentNode")
+        itemNode.Update(item, true)
+        node.appendChild(itemNode)
+    end for
+    return node
 end function
