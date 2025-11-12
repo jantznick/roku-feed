@@ -19,7 +19,13 @@ const LOGO_FILENAMES = [
     "hockey.png",
     "football.png",
     "baseball.png",
-    "sports.png"
+    "sports.png",
+    "soccer2.png",
+    "basketball2.png",
+    "hockey2.png",
+    "football2.png",
+    "baseball2.png",
+    "sports2.png"
     // Add more filenames as you upload them...
 ];
 
@@ -108,7 +114,6 @@ async function generateLogo() {
                         width: 100px;
                         height: 100px;
                         object-fit: contain;
-                        filter: grayscale(1) brightness(10);
                     }
                 </style>
             </head>

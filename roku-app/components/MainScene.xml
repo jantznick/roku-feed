@@ -15,7 +15,6 @@
             showOptions="false"
             showClock="true"
             logoUri="https://f004.backblazeb2.com/file/roku-hockey/channel-header.png"
-            translation="[0,60]"
         />
         <!-- LoadingIndicator should be visible only in case of waiting for content -->
         <Label

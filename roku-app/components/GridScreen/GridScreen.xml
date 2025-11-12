@@ -23,7 +23,7 @@
         <Label
 	        id="titleLabel"
 	        width="1020"
-			translation="[130,170]"
+			translation="[130,150]"
 	    />
         <!-- Label with description of content.
 	         wrap="true" and numLines="3" means that the text can be broken into three lines -->
