@@ -43,14 +43,25 @@ end sub
 
 sub OnVideoVisibleChange() ' invoked when video node visibility is changed
     if m.videoPlayer.visible = false and m.top.visible = true
-        ' the index of the video in the video playlist that is currently playing.
-        currentIndex = m.videoPlayer.contentIndex
+        ' When the video screen closes, check our saved context.
+        if m.g_contentForPlayback <> invalid and m.g_selectedItemForPlayback <> invalid
+            screen = GetCurrentScreen()
+            screen.SetFocus(true)
+            
+            ' Restore focus to the correct item.
+            screen.jumpToItem = m.g_selectedItemForPlayback
+
+            ' Clean up the context variables.
+            m.delete("g_contentForPlayback")
+            m.delete("g_selectedItemForPlayback")
+        else
+            ' Fallback for safety, though it shouldn't be needed.
+            screen = GetCurrentScreen()
+            screen.SetFocus(true)
+        end if
+
         m.videoPlayer.control = "stop" ' stop playback
         'clear video player content, for proper start of next video player
         m.videoPlayer.content = invalid
-        screen = GetCurrentScreen()
-        screen.SetFocus(true) ' return focus to grid screen
-        ' navigate to the last played item
-        screen.jumpToItem = currentIndex + m.selectedIndex[1]
     end if
 end sub

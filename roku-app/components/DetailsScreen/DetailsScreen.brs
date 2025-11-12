@@ -20,10 +20,8 @@ function Init()
 end function
 
 sub OnVisibleChange() ' invoked when DetailsScreen visibility is changed
-    ' set focus for buttons list when DetailsScreen become visible
     if m.top.visible = true
         m.buttons.SetFocus(true)
-        m.top.itemFocused = m.top.jumpToItem
     end if
 end sub
 
@@ -121,6 +119,7 @@ sub OnJumpToItem() ' invoked when jumpToItem field is populated
     ' check if jumpToItem field has valid value
     ' it should be set within interval from 0 to content.Getchildcount()
     if content <> invalid and m.top.jumpToItem >= 0 and content.GetChildCount() > m.top.jumpToItem
+        ' This is now the single, reliable place where itemFocused is set.
         m.top.itemFocused = m.top.jumpToItem
     end if
 end sub
@@ -171,15 +170,19 @@ function Get12HourTimeWithSeconds(dt as Object) as String
     if hour = 0
         hour = 12
     end if
-    return Str(hour) + ":" + PadZero(minutes) + ":" + PadZero(seconds) + " " + ampm
+    ' Use a manual, safe padding function and trim the leading space from Str()
+    return Str(hour).Trim() + ":" + PadLeft(minutes) + ":" + PadLeft(seconds) + " " + ampm
 end function
 
-' Manually pads a number with a leading zero if it is less than 10.
-function PadZero(num as Integer) as String
+' Safely pads a number to 2 digits with a leading zero for string formatting.
+' This avoids issues with object methods on primitive types.
+function PadLeft(num as Integer) as String
+    ' Trim the leading space that Str() adds to non-negative numbers
+    numStr = Str(num).Trim()
     if num < 10
-        return "0" + Str(num)
+        return "0" + numStr
     else
-        return Str(num)
+        return numStr
     end if
 end function
 
