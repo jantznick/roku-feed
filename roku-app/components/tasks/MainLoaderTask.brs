@@ -16,10 +16,15 @@ sub GetContent()
     rsp = xfer.GetToString()
     rootChildren = []
     rows = {}
+    lastUpdated = invalid
 
     ' parse the feed and build a tree of ContentNodes to populate the GridView
     json = ParseJson(rsp)
     if json <> invalid
+        if json.lastUpdated <> invalid
+            lastUpdated = json.lastUpdated
+        end if
+
         for each category in json
             value = json.Lookup(category)
             if Type(value) = "roArray" ' if parsed key value having other objects in it
@@ -28,7 +33,7 @@ sub GetContent()
                     row.title = category
                     row.children = []
                     for each item in value ' parse items and push them to row
-                        itemData = GetItemData(item)
+                        itemData = GetItemData(item, lastUpdated)
                         row.children.Push(itemData)
                     end for
                     rootChildren.Push(row)
@@ -38,20 +43,16 @@ sub GetContent()
         ' set up a root ContentNode to represent rowList on the GridScreen
         contentNode = CreateObject("roSGNode", "ContentNode")
         contentNode.Update({
-            children: rootChildren
+            children: rootChildren,
+            lastUpdated: lastUpdated
         }, true)
         ' populate content field with root content node.
         ' Observer(see OnMainContentLoaded in MainScene.brs) is invoked at that moment
         m.top.content = contentNode
-        
-        ' After successfully parsing, store the lastUpdated timestamp on the global node
-        if json.lastUpdated <> invalid
-            m.global.SetField("lastUpdated", json.lastUpdated, true)
-        end if
     end if
 end sub
 
-function GetItemData(video as Object) as Object
+function GetItemData(video as Object, lastUpdated as Dynamic) as Object
     item = {}
     lastUpdatedStr = ""
     localTimeStr = ""
@@ -66,9 +67,9 @@ function GetItemData(video as Object) as Object
         item.description = video.longDescription
     else
         ' Construct the description and append the last updated time.
-        if m.global.lastUpdated <> invalid
+        if lastUpdated <> invalid
             dt = CreateObject("roDateTime")
-            dt.FromISO8601String(m.global.lastUpdated)
+            dt.FromISO8601String(lastUpdated)
             dt.ToLocalTime()
             ' Format to something like "11/12/2025 09:30 PM"
             lastUpdatedStr = dt.AsDateString("short-month-short-day-year") + " " + Get12HourTime(dt)
@@ -114,20 +115,4 @@ function GetItemData(video as Object) as Object
         item.streamContent = video.content
     end if
     return item
-end function
-
-function Get12HourTime(dt as Object) as String
-    hour = dt.GetHours()
-    minutes = dt.GetMinutes()
-    ampm = "AM"
-    if hour >= 12
-        ampm = "PM"
-    end if
-    if hour > 12
-        hour = hour - 12
-    end if
-    if hour = 0
-        hour = 12
-    end if
-    return hour.ToStr() + ":" + minutes.ToPaddedString(2, "0") + " " + ampm
 end function

@@ -35,8 +35,10 @@ sub OnStreamButtonFocused()
     
     buttonData = m.buttons.content.getChild(focusedButtonIndex)
 
-    ' The base description is stored on the description label's "baseText" field
-    baseDescription = m.description.baseText
+    baseDescription = m.top.basetext
+    if baseDescription = invalid
+        baseDescription = ""
+    end if
 
     ' Format the confirmedAt timestamp for display.
     confirmedTimeStr = ""
@@ -60,9 +62,10 @@ end sub
 ' Populate content details information
 sub SetDetailsContent(content as Object)
     ' Store the original description in a custom field so we can reuse it
-    m.description.baseText = content.description
     m.description.text = content.description
-
+    m.description.color = "#ffffff"
+    m.top.basetext = content.description
+    
     m.poster.uri = content.hdPosterUrl ' set url of content poster
     
     ' Check if the game is live and update the time label accordingly

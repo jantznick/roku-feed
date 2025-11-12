@@ -7,6 +7,7 @@
     <interface>
         <!-- Content fields -->
         <field id="content" type="node" />
+        <field id="basetext" type="string" />
         <!-- @WriteOnly  -->
         <!-- Manually focus on desired item. This field must be set after setting the content field. -->
         <field id="jumpToItem" type="integer" onChange="OnJumpToItem" value="0" alwaysNotify="true" />
