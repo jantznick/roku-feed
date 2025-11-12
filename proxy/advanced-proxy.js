@@ -29,9 +29,11 @@ app.get('/proxy/:b64StreamUrl', async (req, res) => {
     const isManifestRequest = streamUrl.endsWith('.m3u8');
     
     console.log(`---\n[${new Date().toISOString()}] New request`);
-    console.log(`  - Stream URL: ${streamUrl}`);
+    console.log(`  - Client IP: ${req.ip}`);
+    console.log(`  - Decoded Stream URL: ${streamUrl}`);
     
     try {
+        console.log(`  - Sending request to destination with headers:`, headers);
         const response = await gotScraping({
             url: streamUrl,
             headers: headers, // Use the globally defined headers
@@ -39,6 +41,8 @@ app.get('/proxy/:b64StreamUrl', async (req, res) => {
             responseType: isManifestRequest ? 'text' : 'buffer',
             retry: { limit: 2 },
         });
+
+        console.log(`  - Received response with status ${response.statusCode}.`);
 
         // Set CORS headers manually to revert to the previously working state.
         res.setHeader('Access-Control-Allow-Origin', '*');
@@ -84,7 +88,11 @@ app.get('/proxy/:b64StreamUrl', async (req, res) => {
         }
 
     } catch (error) {
-        console.error(`  - ERROR processing request:`, error.message);
+        console.error(`  - ERROR processing request for ${streamUrl}:`, error.message);
+        if (error.response) {
+            console.error(`    - Status: ${error.response.statusCode}`);
+            console.error(`    - Headers: ${JSON.stringify(error.response.headers)}`);
+        }
         if (!res.headersSent) {
             res.status(500).send(`Failed to proxy stream: ${error.message}`);
         }

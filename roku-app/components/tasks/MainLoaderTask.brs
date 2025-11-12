@@ -43,6 +43,11 @@ sub GetContent()
         ' populate content field with root content node.
         ' Observer(see OnMainContentLoaded in MainScene.brs) is invoked at that moment
         m.top.content = contentNode
+        
+        ' After successfully parsing, store the lastUpdated timestamp on the global node
+        if json.lastUpdated <> invalid
+            m.global.SetField("lastUpdated", json.lastUpdated, true)
+        end if
     end if
 end sub
 
@@ -53,6 +58,16 @@ function GetItemData(video as Object) as Object
     if video.longDescription <> invalid
         item.description = video.longDescription
     else
+        ' Construct the description and append the last updated time.
+        dim lastUpdatedStr as String = ""
+        if m.global.lastUpdated <> invalid
+            dt = CreateObject("roDateTime")
+            dt.FromISO8601String(m.global.lastUpdated)
+            dt.ToLocalTime()
+            ' Format to something like "11/12/2025 09:30 PM"
+            lastUpdatedStr = dt.AsDateString("short-month-short-day-year") + " " + Get12HourTime(dt)
+        end if
+
         descriptionStr = video.shortDescription
         dashPosition = descriptionStr.Instr(0, " - ")
         leaguePart = descriptionStr
@@ -68,10 +83,13 @@ function GetItemData(video as Object) as Object
             localTimeStr = Get12HourTime(dt)
         end if
 
+        item.description = leaguePart
         if localTimeStr <> ""
-            item.description = leaguePart + " - Start Time: " + localTimeStr
-        else
-            item.description = video.shortDescription
+            item.description = item.description + " - Start Time: " + localTimeStr
+        end if
+
+        if lastUpdatedStr <> ""
+            item.description = item.description + chr(10) + "Feed Last Updated: " + lastUpdatedStr
         end if
     end if
     item.hdPosterURL = video.thumbnail
@@ -91,4 +109,20 @@ function GetItemData(video as Object) as Object
         item.streamContent = video.content
     end if
     return item
+end function
+
+function Get12HourTime(dt as Object) as String
+    hour = dt.GetHours()
+    minutes = dt.GetMinutes()
+    ampm = "AM"
+    if hour >= 12
+        ampm = "PM"
+    end if
+    if hour > 12
+        hour = hour - 12
+    end if
+    if hour = 0
+        hour = 12
+    end if
+    return hour.ToStr() + ":" + minutes.ToPaddedString(2, "0") + " " + ampm
 end function

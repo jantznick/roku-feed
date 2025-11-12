@@ -67,7 +67,8 @@ export async function scrapeStreamedGames(browser, sportsCategories) {
                 url: info.streamUrl,
                 headers: {
                     Referer: info.referer
-                }
+                },
+                confirmedAt: info.confirmedAt
             };
         }).filter(Boolean);
 
@@ -154,11 +155,12 @@ async function getLiveStreams(categories) {
                         const streams = await streamsResponse.json();
 
                         if (streams && streams.length > 0) {
-                            // Now store an object with both the URL and the source name
+                            // Now store an object with both the URL and the source name,
+                            // while filtering out any unwanted domains like 'gg.poocloud.in'.
                             const embedInfos = streams.map(stream => ({
                                 url: stream.embedUrl,
                                 sourceName: source.source // Keep track of the source name
-                            }));
+                            })).filter(info => !info.url.includes('gg.poocloud.in'));
                             allEmbedUrls.push(...embedInfos);
                         }
                     } catch (sourceError) {
@@ -167,13 +169,6 @@ async function getLiveStreams(categories) {
                 }
 
                 if (allEmbedUrls.length > 0) {
-                    // Deprioritize 'gg.poocloud.in' by moving them to the end of the array.
-                    allEmbedUrls.sort((a, b) => {
-                        const aIsPoo = a.url.includes('gg.poocloud.in');
-                        const bIsPoo = b.url.includes('gg.poocloud.in');
-                        return aIsPoo - bIsPoo;
-                    });
-
                     allGameStreams.push({
                         title: game.title,
                         category: game.category,
@@ -210,7 +205,8 @@ export async function getFinalStreamUrl(browser, embedUrl, sourceName) {
                 resolve({
                     streamUrl: url,
                     referer: request.headers().referer,
-                    sourceName: sourceName // Pass the source name through
+                    sourceName: sourceName, // Pass the source name through
+                    confirmedAt: new Date().toISOString()
                 });
             }
         };
@@ -362,7 +358,8 @@ export async function scrape247Channels(browser) {
             return {
                 name: info.sourceName || `Stream ${index + 1}`, // Fallback for the name
                 url: info.streamUrl,
-                headers: { Referer: info.referer }
+                headers: { Referer: info.referer },
+                confirmedAt: info.confirmedAt
             };
         }).filter(Boolean);
 

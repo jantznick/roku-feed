@@ -32,6 +32,7 @@ export function createFeedItem(game, imageUrl) {
             url: streamUrl,
             quality: quality,
             videoType: "HLS",
+            confirmedAt: stream.confirmedAt
         };
     });
 
