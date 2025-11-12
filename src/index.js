@@ -31,6 +31,13 @@ async function cleanupLocalImages(removedGames) {
 }
 
 async function main() {
+  const startTime = new Date();
+  console.log('*************************************');
+  console.log(`\nScript Run Start: ${startTime.toLocaleString()}\n`);
+  console.log('*************************************\n');
+
+  let newGames = [], removedGames = [], updatedGames = [];
+
   console.log('--- Roku Feed Scraper ---');
   console.log(`- DEBUG MODE: ${process.env.DEBUG === 'true' ? '✅ Enabled' : '❌ Disabled'}`);
   console.log(`- DRY RUN: ${process.env.DRY_RUN === 'true' ? '✅ Enabled' : '❌ Disabled'}`);
@@ -68,7 +75,10 @@ async function main() {
     // We need to get ALL previous content for comparison.
     const previousLeagues = Object.keys(feed).filter(k => Array.isArray(feed[k]));
     const previousContent = previousLeagues.flatMap(league => feed[league]);
-    const { newGames, removedGames } = compareGames(previousContent, allCurrentGames);
+    const comparisonResult = compareGames(previousContent, allCurrentGames);
+    newGames = comparisonResult.newGames;
+    removedGames = comparisonResult.removedGames;
+    updatedGames = comparisonResult.updatedGames;
 
     // 4. Handle removed games
     await deleteImages(removedGames);
@@ -79,22 +89,36 @@ async function main() {
     });
     console.log(`Removed ${removedGames.length} games from the feed.`);
 
-    // 5. Handle new games
-    // The 'deepScrapeGames' is specific to onhockey.tv, so we only pass its new games.
-    const newOnHockeyGames = newGames.filter(game => onHockeyGames.some(g => g.id === game.id));
-    const newStreamedGames = newGames.filter(game => streamedGames.some(g => g.id === game.id));
-    const newChannels247Games = newGames.filter(game => channels247.some(g => g.id === game.id));
+    // --- Game Processing Logic ---
+
+    // First, remove the old versions of the updated games from our feed object.
+    // This allows us to add the fresh versions back in with new stream links.
+    const updatedGameIds = new Set(updatedGames.map(g => g.id));
+    previousLeagues.forEach(league => {
+        feed[league] = feed[league].filter(item => !updatedGameIds.has(item.id));
+    });
+    if (updatedGames.length > 0) {
+        console.log(`Cleared ${updatedGames.length} existing games from the feed to prepare for update.`);
+    }
+
+    // We will process both new and updated games to get their streams and add them to the feed.
+    const gamesToProcess = [...newGames, ...updatedGames];
+
+    // The 'deepScrapeGames' is specific to onhockey.tv, so we separate the games by source.
+    const onHockeyToProcess = gamesToProcess.filter(game => onHockeyGames.some(g => g.id === game.id));
+    const streamedToProcess = gamesToProcess.filter(game => streamedGames.some(g => g.id === game.id));
+    const channelsToProcess = gamesToProcess.filter(game => channels247.some(g => g.id === game.id));
     
-    const newOnHockeyGamesWithStreams = await deepScrapeGames(browser, newOnHockeyGames);
+    const onHockeyWithStreams = await deepScrapeGames(browser, onHockeyToProcess);
 
-    // The new streamed games already have their streams, so we just combine them.
-    const allNewGamesWithStreams = [...newOnHockeyGamesWithStreams, ...newStreamedGames, ...newChannels247Games];
+    // The streamed games and channels already have their streams, so we just combine everything.
+    const allGamesToAddOrUpdate = [...onHockeyWithStreams, ...streamedToProcess, ...channelsToProcess];
 
-    // --- IMAGE HANDLING REFACTORED ---
+    // --- IMAGE HANDLING ---
     
     // 1. Separate 24/7 channels, as their posters are static and don't need processing.
-    const channelsForFeed = allNewGamesWithStreams.filter(game => game.league === '24/7 Channels');
-    const gamesForImageProcessing = allNewGamesWithStreams.filter(game => game.league !== '24/7 Channels');
+    const channelsForFeed = allGamesToAddOrUpdate.filter(game => game.league === '24/7 Channels');
+    const gamesForImageProcessing = allGamesToAddOrUpdate.filter(game => game.league !== '24/7 Channels');
 
     // 2. Run the image pipeline ONLY on the regular games.
     const gamesToGenerate = gamesForImageProcessing.filter(game => !game.poster);
@@ -109,8 +133,8 @@ async function main() {
     // This map now only contains URLs for regular games.
     const publicUrlMap = await uploadImages(localImageMap);
 
-    // 3. Add all new items to the feed, using the correct poster URL for each type.
-    allNewGamesWithStreams.forEach(game => {
+    // 3. Add all new and updated items to the feed, using the correct poster URL for each type.
+    allGamesToAddOrUpdate.forEach(game => {
         let posterUrl;
         if (game.league === '24/7 Channels') {
             // For channels, the poster URL is the final, hardcoded public URL.
@@ -128,7 +152,7 @@ async function main() {
         }
         feed[league].push(feedItem);
     });
-    console.log(`Added ${allNewGamesWithStreams.length} new games/channels to the feed.`);
+    console.log(`Added or updated ${allGamesToAddOrUpdate.length} games/channels in the feed.`);
 
     // Sort NCAA games to put "Western Michigan" at the front
     if (feed["NCAA D1 Mens"]) {
@@ -175,6 +199,11 @@ async function main() {
         if (feed[league] && feed[league].length > 0) finalFeed[league] = feed[league];
     });
 
+    // Add the script duration to the feed before writing
+    const dataGenerationEndTime = new Date();
+    const dataGenerationDuration = (dataGenerationEndTime - startTime) / 1000;
+    finalFeed.scriptDuration = `${dataGenerationDuration.toFixed(2)} seconds`;
+
     const feedJson = JSON.stringify(finalFeed, null, 2);
 
     // Write locally first for inspection
@@ -187,6 +216,20 @@ async function main() {
     console.error("Scraping process failed:", error);
   } finally {
     await browser.close();
+    
+    const endTime = new Date();
+    const duration = (endTime - startTime) / 1000; // in seconds
+
+    console.log('\n*************************************');
+    console.log(`\nScript Run End: ${endTime.toLocaleString()}`);
+    console.log(`Duration: ${duration.toFixed(2)} seconds\n`);
+    console.log('--- Summary ---');
+    console.log(`- Added: ${newGames.length} items`);
+    console.log(`- Updated: ${updatedGames.length} items`);
+    console.log(`- Removed: ${removedGames.length} items`);
+    console.log('---------------');
+    console.log('\n*************************************');
+
     console.log('Scraper finished.');
   }
 }

@@ -37,7 +37,10 @@ export function compareGames(previousContent, currentGames) {
     
     const removedGames = previousContent.filter(item => !currentGameIds.has(item.id));
 
-    console.log(`Game comparison: ${newGames.length} new, ${removedGames.length} removed.`);
+    // Find games that exist in both the old and new lists. These are candidates for an update.
+    const updatedGames = currentGames.filter(game => prevGameIds.has(game.id));
 
-    return { newGames, removedGames };
+    console.log(`Game comparison: ${newGames.length} new, ${removedGames.length} removed, ${updatedGames.length} to update.`);
+
+    return { newGames, removedGames, updatedGames };
 }
