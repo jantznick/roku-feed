@@ -71,8 +71,8 @@ async function generateLogo() {
                     @import url('https://fonts.googleapis.com/css2?family=Teko:wght@700&display=swap');
                     body {
                         margin: 0;
-                        width: 500px;
-                        height: 80px;
+                        width: 1000px;
+                        height: 160px;
                         background-color: transparent;
                         display: flex;
                         align-items: center;
@@ -83,30 +83,30 @@ async function generateLogo() {
                         display: flex;
                         align-items: center;
                         justify-content: flex-start; /* Left-align content */
-                        padding-left: 20px;
+                        padding-left: 40px;
                     }
                     .text-container {
                         display: flex;
                         flex-direction: column;
                         align-items: center;
                         line-height: 0.8;
-                        margin: 0 15px; /* Margin on both sides of text */
+                        margin: 0 30px; /* Margin on both sides of text */
                     }
                     .we-like {
-                        font-size: 24px;
+                        font-size: 48px;
                         font-weight: 700;
                         color: #FFFFFF;
                         letter-spacing: 1.5px;
                     }
                     .sports {
-                        font-size: 50px;
+                        font-size: 100px;
                         font-weight: 700;
                         color: #FFFFFF;
-                        text-shadow: 2px 2px 2px #000000;
+                        text-shadow: 3px 3px 3px #000000;
                     }
                     .logo {
-                        width: 50px;
-                        height: 50px;
+                        width: 100px;
+                        height: 100px;
                         object-fit: contain;
                         filter: grayscale(1) brightness(10);
                     }
@@ -129,7 +129,7 @@ async function generateLogo() {
     console.log('🚀 Launching Puppeteer to generate image...');
     const browser = await puppeteer.launch({ headless: true });
     const page = await browser.newPage();
-    await page.setViewport({ width: 500, height: 80 });
+    await page.setViewport({ width: 1000, height: 160 });
     await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
     
     // Ensure the output directory exists before saving the screenshot.
