@@ -23,14 +23,18 @@ export default function MatchDetailsScreen() {
   // Create video player
   const player = useVideoPlayer(selectedStream?.url || '', (player) => {
     player.loop = false;
+    player.staysActiveInBackground = true; // Keep playing in background/PiP
   });
 
   // Update player source when stream changes
   useEffect(() => {
-    if (selectedStream?.url) {
-      player.replace(selectedStream.url);
-      player.play();
-    }
+    const updateStream = async () => {
+      if (selectedStream?.url) {
+        await player.replace(selectedStream.url);
+        player.play();
+      }
+    };
+    updateStream();
   }, [selectedStreamIndex, selectedStream?.url]);
 
   if (!match) {

@@ -34,3 +34,4 @@ export interface Settings {
   favoriteTeams: string[];
 }
 
+

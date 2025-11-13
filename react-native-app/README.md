@@ -18,6 +18,19 @@ Then install the remaining dependencies:
 npm install expo-video fuse.js
 ```
 
+After installing packages, rebuild the app to apply native changes:
+
+```bash
+npx expo prebuild --clean
+npx expo run:ios
+```
+
+Or if using development build:
+
+```bash
+npx expo start --clear
+```
+
 ### Development
 
 ```bash

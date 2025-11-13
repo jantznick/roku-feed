@@ -14,7 +14,8 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.welikesports.app",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": ["audio"]
       }
     },
     "android": {
@@ -23,7 +24,14 @@
       }
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      [
+        "expo-video",
+        {
+          "supportsBackgroundAudio": true,
+          "supportsPictureInPicture": true
+        }
+      ]
     ],
     "scheme": "welikesports",
     "experiments": {
