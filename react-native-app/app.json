@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "Roku Feed",
+    "slug": "roku-feed",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#0f172a"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.rokufeed.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0f172a"
+      }
+    },
+    "plugins": [
+      "expo-router"
+    ],
+    "scheme": "roku-feed",
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
+
