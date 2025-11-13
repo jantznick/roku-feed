@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Roku Feed",
-    "slug": "roku-feed",
+    "name": "We Like Sports",
+    "slug": "welikesports",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
@@ -9,9 +9,13 @@
       "resizeMode": "contain",
       "backgroundColor": "#0f172a"
     },
+    "icon": "./assets/icon.png",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.rokufeed.app"
+      "bundleIdentifier": "com.welikesports.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -21,10 +25,18 @@
     "plugins": [
       "expo-router"
     ],
-    "scheme": "roku-feed",
+    "scheme": "welikesports",
     "experiments": {
       "typedRoutes": true
+    },
+    "cli": {
+      "requireCommit": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "4406b296-7f81-4164-a059-d67eebaf8f6a"
+      }
     }
   }
 }
-
