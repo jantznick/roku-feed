@@ -118,7 +118,7 @@ async function getLiveStreams(categories) {
                 matches = JSON.parse(sampleData);
             } catch (error) {
                 console.error(`Error reading sample file at ${SAMPLE_DATA_PATH}. Please ensure the file has been created.`, error);
-                return []; // Return empty array if sample file is missing
+                return [];
             }
         } else {
             console.log('Fetching live matches from Streamed.pk...');

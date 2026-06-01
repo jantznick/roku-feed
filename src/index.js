@@ -13,6 +13,28 @@ import { logLeagues } from './league-logger.js';
 
 const FEED_FILE_PATH = path.resolve(process.cwd(), 'dist', 'feed.json');
 
+/** League keys in the feed → team name substrings to show first in that league's row. */
+const PRIORITY_TEAMS_BY_LEAGUE = {
+    'NCAA D1 Mens': ['Western Michigan'],
+    'BASEBALL': ['Chicago Cubs'],
+};
+
+function sortLeaguesWithPriorityTeams(feed) {
+    for (const [leagueKey, teamNames] of Object.entries(PRIORITY_TEAMS_BY_LEAGUE)) {
+        const items = feed[leagueKey];
+        if (!items?.length) continue;
+
+        items.sort((a, b) => {
+            const aIndex = teamNames.findIndex((name) => a.title.includes(name));
+            const bIndex = teamNames.findIndex((name) => b.title.includes(name));
+            const aRank = aIndex === -1 ? teamNames.length : aIndex;
+            const bRank = bIndex === -1 ? teamNames.length : bIndex;
+            if (aRank !== bRank) return aRank - bRank;
+            return 0;
+        });
+    }
+}
+
 async function cleanupLocalImages(removedGames) {
     console.log('Cleaning up local image files...');
     for (const game of removedGames) {
@@ -36,11 +58,12 @@ async function main() {
   console.log(`\nScript Run Start: ${startTime.toLocaleString()}\n`);
   console.log('*************************************\n');
 
-  let newGames = [], removedGames = [], updatedGames = [];
+  let newGames = [], removedGames = [], updatedGames = [], unchangedCount = 0;
 
   console.log('--- Roku Feed Scraper ---');
   console.log(`- DEBUG MODE: ${process.env.DEBUG === 'true' ? '✅ Enabled' : '❌ Disabled'}`);
   console.log(`- DRY RUN: ${process.env.DRY_RUN === 'true' ? '✅ Enabled' : '❌ Disabled'}`);
+  console.log(`- SKIP PROXY: ${process.env.SKIP_PROXY === 'true' ? '✅ Direct stream URLs only' : '❌ Use proxy when Referer present'}`);
   console.log('-------------------------');
 
   const browser = await puppeteer.launch({ headless: true });
@@ -57,7 +80,14 @@ async function main() {
     // 2. Scrape for games
     const onHockeyGames = await scrapeMainPage(browser);
 
-    const sportsCategories = ['golf', 'basketball', 'american-football', 'baseball', 'hockey', 'football', 'darts', 'motor-sports', 'tennis', 'rugby', 'billiards', 'afl', 'other'];
+    // USA-centric sports on Streamed.pk (hockey also covered by onhockey.tv above)
+    const sportsCategories = [
+      'hockey',
+      'baseball',
+      'basketball',
+      'american-football',
+      'motor-sports'
+    ];
     const streamedGames = await scrapeStreamedGames(browser, sportsCategories);
     const channels247 = await scrape247Channels(browser);
 
@@ -75,10 +105,12 @@ async function main() {
     // We need to get ALL previous content for comparison.
     const previousLeagues = Object.keys(feed).filter(k => Array.isArray(feed[k]));
     const previousContent = previousLeagues.flatMap(league => feed[league]);
+    const previousById = new Map(previousContent.map((item) => [item.id, item]));
     const comparisonResult = compareGames(previousContent, allCurrentGames);
     newGames = comparisonResult.newGames;
     removedGames = comparisonResult.removedGames;
     updatedGames = comparisonResult.updatedGames;
+    unchangedCount = comparisonResult.unchangedCount;
 
     // 4. Handle removed games
     await deleteImages(removedGames);
@@ -115,33 +147,37 @@ async function main() {
     const allGamesToAddOrUpdate = [...onHockeyWithStreams, ...streamedToProcess, ...channelsToProcess];
 
     // --- IMAGE HANDLING ---
-    
-    // 1. Separate 24/7 channels, as their posters are static and don't need processing.
-    const channelsForFeed = allGamesToAddOrUpdate.filter(game => game.league === '24/7 Channels');
-    const gamesForImageProcessing = allGamesToAddOrUpdate.filter(game => game.league !== '24/7 Channels');
+    // Only new games (or title changes) get new posters; updates reuse existing B2 thumbnails.
+    const newGameIds = new Set(newGames.map((g) => g.id));
+    const needsNewPoster = (game) => {
+        if (game.league === '24/7 Channels') return false;
+        if (!newGameIds.has(game.id)) {
+            const prev = previousById.get(game.id);
+            return prev && prev.title !== game.name;
+        }
+        return true;
+    };
 
-    // 2. Run the image pipeline ONLY on the regular games.
-    const gamesToGenerate = gamesForImageProcessing.filter(game => !game.poster);
-    const gamesWithPoster = gamesForImageProcessing.filter(game => game.poster);
+    const gamesForImageProcessing = allGamesToAddOrUpdate.filter(needsNewPoster);
+    const gamesToGenerate = gamesForImageProcessing.filter((game) => !game.poster);
+    const gamesWithPoster = gamesForImageProcessing.filter((game) => game.poster);
 
     const [generatedImageMap, downloadedPosterMap] = await Promise.all([
         generateImages(browser, gamesToGenerate),
-        downloadPosters(gamesWithPoster)
+        downloadPosters(gamesWithPoster),
     ]);
-    
+
     const localImageMap = new Map([...generatedImageMap, ...downloadedPosterMap]);
-    // This map now only contains URLs for regular games.
     const publicUrlMap = await uploadImages(localImageMap);
 
-    // 3. Add all new and updated items to the feed, using the correct poster URL for each type.
-    allGamesToAddOrUpdate.forEach(game => {
+    allGamesToAddOrUpdate.forEach((game) => {
         let posterUrl;
         if (game.league === '24/7 Channels') {
-            // For channels, the poster URL is the final, hardcoded public URL.
             posterUrl = game.poster;
-        } else {
-            // For games, we get the URL from the map of freshly uploaded images.
+        } else if (publicUrlMap.has(game.id)) {
             posterUrl = publicUrlMap.get(game.id);
+        } else {
+            posterUrl = previousById.get(game.id)?.thumbnail;
         }
 
         const feedItem = createFeedItem(game, posterUrl);
@@ -154,17 +190,8 @@ async function main() {
     });
     console.log(`Added or updated ${allGamesToAddOrUpdate.length} games/channels in the feed.`);
 
-    // Sort NCAA games to put "Western Michigan" at the front
-    if (feed["NCAA D1 Mens"]) {
-        feed["NCAA D1 Mens"].sort((a, b) => {
-            const aIsWM = a.title.includes('Western Michigan');
-            const bIsWM = b.title.includes('Western Michigan');
-            if (aIsWM && !bIsWM) return -1;
-            if (!aIsWM && bIsWM) return 1;
-            return 0; // Keep original order for other games
-        });
-    }
-    
+    sortLeaguesWithPriorityTeams(feed);
+
     // 6. Finalize and save the feed
     feed.lastUpdated = new Date().toISOString();
 
@@ -176,7 +203,10 @@ async function main() {
     };
 
     const allLeagueKeys = Object.keys(feed).filter(key => Array.isArray(feed[key]));
-    const knownNonSoccerLeagues = new Set(['NHL', 'NCAA D1 Mens', 'BASKETBALL', 'AMERICAN-FOOTBALL', 'BASEBALL', 'GOLF', 'HOCKEY', '24/7 Channels']);
+    const knownNonSoccerLeagues = new Set([
+        'NHL', 'NCAA D1 Mens', 'BASKETBALL', 'AMERICAN-FOOTBALL',
+        'BASEBALL', 'HOCKEY', 'MOTOR-SPORTS', '24/7 Channels',
+    ]);
     
     const nonSoccerLeagues = allLeagueKeys.filter(key => knownNonSoccerLeagues.has(key)).sort();
     const soccerLeagues = allLeagueKeys.filter(key => !knownNonSoccerLeagues.has(key));
@@ -226,6 +256,7 @@ async function main() {
     console.log('--- Summary ---');
     console.log(`- Added: ${newGames.length} items`);
     console.log(`- Updated: ${updatedGames.length} items`);
+    console.log(`- Unchanged: ${unchangedCount} items`);
     console.log(`- Removed: ${removedGames.length} items`);
     console.log('---------------');
     console.log('\n*************************************');

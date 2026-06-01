@@ -13,6 +13,8 @@ This project scrapes `onhockey.tv` for NHL and NCAA Men's hockey games, generate
 
 ## Setup
 
+For full local testing (B2, React Native, Roku), see **[docs/LOCAL_SETUP.md](docs/LOCAL_SETUP.md)**.
+
 1.  **Clone the repository.**
 
 2.  **Create an environment file:**

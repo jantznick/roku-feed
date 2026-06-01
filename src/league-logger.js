@@ -2,7 +2,10 @@ import fs from 'fs/promises';
 import path from 'path';
 
 const LOG_FILE_PATH = path.resolve(process.cwd(), 'data', 'soccer-leagues.log');
-const KNOWN_NON_SOCCER_LEAGUES = new Set(['NHL', 'NCAA D1 Mens', 'BASKETBALL', 'AMERICAN-FOOTBALL', 'BASEBALL', 'GOLF', 'HOCKEY']);
+const KNOWN_NON_SOCCER_LEAGUES = new Set([
+    'NHL', 'NCAA D1 Mens', 'BASKETBALL', 'AMERICAN-FOOTBALL',
+    'BASEBALL', 'HOCKEY', 'MOTOR-SPORTS', '24/7 Channels',
+]);
 
 async function getExistingLeagues() {
     try {

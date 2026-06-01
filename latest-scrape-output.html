@@ -168,27 +168,25 @@ document.getElementById('clock').innerHTML = "<iframe scrolling='no' frameborder
 
 <form id="myform" style="margin: 0px">
  <select id="mymenu" onchange="change_hour(document.forms[0].mymenu.options[document.forms[0].mymenu.selectedIndex].value); ClockOut(document.forms[0].mymenu.options[document.forms[0].mymenu.selectedIndex].value); setCookie('TimeZone', document.forms[0].mymenu.options[document.forms[0].mymenu.selectedIndex].value)">
- <option value="00">London GMT0</option>
- <option value="-09">Anchorage AKST/GMT-9</option>
- <option value="-08">Los Angeles PST/GMT-8</option>
- <option value="-07">Denver MST/GMT-7</option>
- <option value="-06">Chicago CST/GMT-6</option>
- <option value="-05">New York EST/GMT-5</option>
- <option value="-04">Halifax AST/GMT-4</option>
- <option value="-03">Brasilia GMT-3</option>
- <option value="01">Stockholm GMT+1</option>
- <option value="02">Helsinki GMT+2</option>
- <option value="03">Moscow GMT+3</option>
+ <option value="01">London GMT+1</option>
+ <option value="00">Reykjavik GMT0</option>
+ <option value="-08">Anchorage AKDT/GMT-8</option>
+ <option value="-07">Los Angeles PDT/GMT-7</option>
+ <option value="-06">Denver MDT/GMT-6</option>
+ <option value="-05">Chicago CDT/GMT-5</option>
+ <option value="-04">New York EDT/GMT-4</option>
+ <option value="-03">Halifax ADT/GMT-3</option>
+ <option value="02">Stockholm GMT+2</option>
+ <option value="03">Helsinki GMT+3</option>
  <option value="04">Togliatti GMT+4</option>
  <option value="05">Astana GMT+5</option>
  <option value="06">Omsk GMT+6</option>
  <option value="07">Novosibirsk GMT+7</option>
  <option value="08">Shanghai GMT+8</option>
  <option value="09">Tokyo GMT+9</option>
- <option value="10">Khabarovsk GMT+10</option>
- <option value="11">Sydney GMT+11</option>
- <option value="12">Kamchatka GMT+12</option>
- <option value="13">Auckland GMT+13</option>
+ <option value="10">Sydney GMT+10</option>
+ <option value="11">Magadan GMT+11</option>
+ <option value="12">Auckland GMT+12</option>
  </select>
  </form>
 
@@ -295,177 +293,15 @@ margin: 6px 0px 12px;
 
 <table id="gametable" border="0" cellspacing="0" width="240" cols="3">
 
-<tbody class="NA" style="display: block;"><tr bgcolor="#3z3z3z" align="center"><td width="30"></td><td background="pic/ico/mleagues/nhl.ico" style="background-repeat: no-repeat" width="140"><b>NHL</b></td><td width="70" align="right"><a href="standings.php?channel=131629" target="_blank">standings</a></td></tr>
+<tbody class="NA" style="display: block;"><tr bgcolor="#3z3z3z" align="center"><td width="30"></td><td background="pic/ico/mleagues/ahl.ico" style="background-repeat: no-repeat" width="140"><b>AHL</b></td><td width="70" align="right"><a href="standings_lr.php?channel=USA/Ahl" target="_blank">draw</a></td></tr>
 
-<tr class="game" onclick="javascript:Menu(this)"><td><text class="game_hour" align="left">00</text>:00</td><td>NY Rangers - Tampa Bay
-<div class="gamelinks" onclick="event.stopPropagation()">
-english:
-<a href="np_stream400.php?channel=//embedstreams.top/embed/delta/live_nhl_lightning-rangers-live-streaming-450871056/1" target="player_frame" title="TNT">streamd</a>
-<a href="np_stream400.php?channel=//embedstreams.top/embed/charlie/new-york-rangers-vs-tampa-bay-lightning-1629469411/1" target="player_frame" title="TNT">streamd</a>
-<a href="np_stream400.php?channel=//embedstreams.top/embed/admin/ppv-new-york-rangers-vs-tampa-bay-lightning/1" target="player_frame" title="TNT">streamd</a>
-<a href="np_stream400.php?channel=//wikisport.wiki/0nhl/1.php" target="player_frame" title="TNT">freestr</a>
-<a href="np_stream400.php?channel=//wikisport.wiki/court/101.php" target="player_frame" title="TNT">freestr</a>
-<a href="np_stream400.php?channel=//wikisport.wiki/ch/120.php" target="player_frame" title="TNT">freestr</a>
-<a href="np_stream400.php?channel=//wikisport.wiki/strm/3.php" target="player_frame" title="Premier Sports 2">freestr</a>
-<a href="np_stream400.php?channel=//embedsports.me/nhl/tampa-bay-lightning-vs-new-york-rangers-stream-1" target="player_frame" title="TNT">plytvme</a>
-<a href="np_stream400.php?channel=//lotusgamehd.xyz/lotushd.php?hd=245" target="player_frame" title="TNT">lotushd</a>
-<a href="np_stream400.php?channel=//streamingon.org/nhl/hd-1.php" target="player_frame" title="TNT">strmngn</a>
-<a href="np_stream400.php?channel=//streamcenter.pro/embed/ch50.php" target="player_frame" title="TNT">streamc</a>
-<a href="np_stream400.php?channel=//voodc.com/embed/85818c93a5909b84847a85959c8f98868481.html" target="player_frame" title="TNT">vodcast</a>
-<a href="np_stream400.php?channel=//vuen.link/ch?id=75" target="player_frame" title="V Sport Vinter">vuenlnk</a>
-<a href="np_stream400.php?channel=//e1link.link/ch?id=75" target="player_frame" title="V Sport Vinter">e1link</a>
-<a href="np_stream400.php?channel=//dabac.link/ch?id=75" target="player_frame" title="V Sport Vinter">dabac</a>
-<a href="np_stream400.php?channel=//www.sports-stream.click/chtv/spsch.php?ch=hdchnl2" target="player_frame" title="Premier Sports 2">sptstrm</a>
-<a href="np_stream400.php?channel=//dlhd.dad/stream/stream-13.php" target="player_frame" title="TNT">ddlive</a>
-<a href="np_stream400.php?channel=//dlhd.dad/stream/stream-338.php" target="player_frame" title="TNT">ddlive</a>
-<a href="np_stream400.php?channel=//dlhd.dad/stream/stream-17.php" target="player_frame" title="V Sport Vinter">ddlive</a>
-<a href="np_stream400.php?channel=//dlhd.dad/stream/stream-557.php" target="player_frame" title="Sky Sport Mix">ddlive</a>
-<a href="np_stream400.php?channel=//dlhd.dad/stream/stream-556.php" target="player_frame" title="Sky Sport Top Event">ddlive</a>
-<a href="np_stream400.php?channel=//dlhd.dad/stream/stream-809.php" target="player_frame" title="TV3 Sport">ddlive</a>
-<a href="np_stream400.php?channel=//dlhd.dad/stream/stream-550.php" target="player_frame" title="Premier Sports 2">ddlive</a>
-<a href="np_stream400.php?channel=//dlhd.dad/stream/stream-147.php" target="player_frame" title="Sport 5 Stars">ddlive</a>
-<a href="np_stream400.php?channel=//topembed.pw/channel/TNT[USA]" target="player_frame" title="TNT">topembd</a>
-<a href="np_stream400.php?channel=//welivesports.shop/hockey/tntusa.php" target="player_frame" title="TNT">wlsport</a>
-<a href="np_stream400.php?channel=//welivesports.shop/hockey/vsportvinter.php" target="player_frame" title="V Sport Vinter">wlsport</a>
-<a href="np_stream400.php?channel=//popcdn.day/go.php?stream=SkySportMixDE" target="player_frame" title="Sky Sport Mix">wideiptv</a>
-<a href="np_stream400.php?channel=//popcdn.day/go.php?stream=SPORT5STARS" target="player_frame" title="Sport 5 Stars">wideiptv</a>
-<br>french:
-<a href="np_stream400.php?channel=//voodc.com/embed/85818c93a5909b84847a85959c9098868482.html" target="player_frame" title="TVA Sports">vodcast</a>
-<a href="np_stream400.php?channel=//vuen.link/ch?id=31" target="player_frame" title="TVA Sports">vuenlnk</a>
-<a href="np_stream400.php?channel=//e1link.link/ch?id=31" target="player_frame" title="TVA Sports">e1link</a>
-<a href="np_stream400.php?channel=//dabac.link/ch?id=31" target="player_frame" title="TVA Sports">dabac</a>
-<a href="np_stream400.php?channel=//dlhd.dad/stream/stream-833.php" target="player_frame" title="TVA Sports">ddlive</a>
-<br>russian:
-<a href="np_fluidtv.php?channel=https://live.kinescopecdn.net/on-air/5bf2c07e-3604-42cf-959a-67ed8914ffd5/fdb75cc5-8023-44dc-9914-6f07b2cdf718/master.m3u8" target="player_frame" title="">fluidtv</a>
-<a href="np_vk.php?channel=-41593209%26id=456249797%26hash=556c544f356fe6d7" target="player_frame" title="">vklive</a>
-<a href="np_vk.php?channel=-72894211%26id=456244913%26hash=02a1e93fadf79c2b" target="player_frame" title="">vklive</a>
-<a href="np_stream400.php?channel=//antenasport.org/setantasport2.php" target="player_frame" title="Setanta Sports 2">anttime</a>
-<br>czech:
-<a href="np_stream400.php?channel=//streambetter.cyou/play/play.php?id=27" target="player_frame" title="Nova Sport 1">strmbttr</a>
-<a href="np_stream400.php?channel=//media.cms.nova.cz/embed/nova-sport-1-live?autoplay=any" target="player_frame" title="Nova Sport 1">novacz</a>
-<br>ukrainian:
-<a href="np_stream400.php?channel=//antenasport.org/setantaukraineplus.php" target="player_frame" title="Setanta Sports+ Ukraine">anttime</a>
-<br>portuguese:
-<a href="np_stream400.php?channel=//dlhd.dad/stream/stream-83.php" target="player_frame" title="ESPN 3 Brasil">ddlive</a>
-<br>geo-restrictions may apply:
-<a href="np_stream400.php?channel=//olimp-video.com/api/broadcast/sportboomcom/13527959" target="player_frame" title="">sportbro</a>
-</div>
-</td><td class="liveon" align="right"><div style="color: #BF0000;"><b>43 live</b></div></td></tr>
-
-<tr class="game" onclick="javascript:Menu(this)"><td><text class="game_hour" align="left">00</text>:30</td><td>Edmonton - Philadelphia
-<div class="gamelinks" onclick="event.stopPropagation()">
-home feed:
-<a href="np_stream400.php?channel=//embedstreams.top/embed/delta/live_nhl_flyers-oilers-live-streaming-450871488/1" target="player_frame" title="ESPN+">streamd</a>
-<a href="np_stream400.php?channel=//embedstreams.top/embed/charlie/edmonton-oilers-vs-philadelphia-flyers-1629469412/1" target="player_frame" title="ESPN+">streamd</a>
-<a href="np_stream400.php?channel=//wikisport.wiki/0nhl/2.php" target="player_frame" title="NBCS Philadelphia">freestr</a>
-<a href="np_stream400.php?channel=//wikisport.wiki/court/102.php" target="player_frame" title="NBCS Philadelphia">freestr</a>
-<a href="np_stream400.php?channel=//embedsports.me/nhl/philadelphia-flyers-vs-edmonton-oilers-stream-1" target="player_frame" title="ESPN+">plytvme</a>
-<a href="np_stream400.php?channel=//lotusgamehd.xyz/lotushd.php?hd=240" target="player_frame" title="ESPN+">lotushd</a>
-<a href="np_stream400.php?channel=//streamingon.org/nhl/hd-2.php" target="player_frame" title="NBCS Philadelphia">strmngn</a>
-<a href="np_stream400.php?channel=//streamcenter.pro/embed/ch51.php" target="player_frame" title="NBCS Philadelphia">streamc</a>
-<a href="np_stream400.php?channel=//voodc.com/embed/85818c93a5909c8c847a8595a18d9886877a.html" target="player_frame" title="NBCS Philadelphia">vodcast</a>
-<a href="np_stream400.php?channel=//vuen.link/ch?id=74" target="player_frame" title="V Sport Premium">vuenlnk</a>
-<a href="np_stream400.php?channel=//e1link.link/ch?id=74" target="player_frame" title="V Sport Premium">e1link</a>
-<a href="np_stream400.php?channel=//dabac.link/ch?id=74" target="player_frame" title="V Sport Premium">dabac</a>
-<a href="np_stream400.php?channel=//dlhd.dad/stream/stream-14.php" target="player_frame" title="NBCS Philadelphia">ddlive</a>
-<a href="np_stream400.php?channel=//dlhd.dad/stream/stream-777.php" target="player_frame" title="NBCS Philadelphia">ddlive</a>
-<a href="np_stream400.php?channel=//dlhd.dad/stream/stream-18.php" target="player_frame" title="V Sport Premium">ddlive</a>
-<br>away feed:
-<a href="np_stream400.php?channel=//embedstreams.top/embed/admin/ppv-edmonton-oilers-vs-philadelphia-flyers/1" target="player_frame" title="SN">streamd</a>
-<a href="np_stream400.php?channel=//wikisport.wiki/0nhl/3.php" target="player_frame" title="SN">freestr</a>
-<a href="np_stream400.php?channel=//wikisport.wiki/court/103.php" target="player_frame" title="SN">freestr</a>
-<a href="np_stream400.php?channel=//embedsports.me/nhl/philadelphia-flyers-vs-edmonton-oilers-stream-2" target="player_frame" title="ESPN+">plytvme</a>
-<a href="np_stream400.php?channel=//voodc.com/embed/85818c93a5909c8c847a8595a18c98868682.html" target="player_frame" title="ESPN+">vodcast</a>
-<a href="np_stream400.php?channel=//dlhd.dad/stream/stream-406.php" target="player_frame" title="SN Ontario">ddlive</a>
-<a href="np_stream400.php?channel=//dlhd.dad/stream/stream-407.php" target="player_frame" title="SN West">ddlive</a>
-<a href="np_stream400.php?channel=//dlhd.dad/stream/stream-408.php" target="player_frame" title="SN East">ddlive</a>
-<a href="np_stream400.php?channel=//topembed.pw/channel/SportsnetOntario[Canada]" target="player_frame" title="SN Ontario">topembd</a>
-<a href="np_stream400.php?channel=//topembed.pw/channel/SportsnetWest[Canada]" target="player_frame" title="SN West">topembd</a>
-<a href="np_stream400.php?channel=//topembed.pw/channel/SportsnetPacific[Canada]" target="player_frame" title="SN Pacific">topembd</a>
-<a href="np_stream400.php?channel=//antenasport.org/sportsnetwest.php" target="player_frame" title="SN West">anttime</a>
-<a href="np_stream400.php?channel=//antenasport.org/sportsnetpacific.php" target="player_frame" title="SN Pacific">anttime</a>
-<br>french:
-<a href="np_stream400.php?channel=//voodc.com/embed/85818c93a5909c8c847a8595a18e98868683.html" target="player_frame" title="TVA Sports 2">vodcast</a>
-<a href="np_stream400.php?channel=//vuen.link/ch?id=32" target="player_frame" title="TVA Sports 2">vuenlnk</a>
-<a href="np_stream400.php?channel=//e1link.link/ch?id=32" target="player_frame" title="TVA Sports 2">e1link</a>
-<a href="np_stream400.php?channel=//dabac.link/ch?id=32" target="player_frame" title="TVA Sports 2">dabac</a>
-<a href="np_stream400.php?channel=//dlhd.dad/stream/stream-834.php" target="player_frame" title="TVA Sports 2">ddlive</a>
-<a href="np_stream400.php?channel=//dlhd.dad/stream/stream-494.php" target="player_frame" title="beIN Sports Max 4">ddlive</a>
-<a href="np_stream400.php?channel=//welivesports.shop/hockey/bein4fr.php" target="player_frame" title="beIN Sports Max 4">wlsport</a>
-<br>russian:
-<a href="np_fluidtv.php?channel=https://live.kinescopecdn.net/on-air/5bf2c07e-3604-42cf-959a-67ed8914ffd5/8007f5a1-a2f6-44d7-907d-9fe69fada923/master.m3u8" target="player_frame" title="">fluidtv</a>
-<a href="np_vk.php?channel=-41593209%26id=456249799%26hash=d43084229a86c7fb" target="player_frame" title="">vklive</a>
-<a href="np_vk.php?channel=-72894211%26id=456244915%26hash=adfc23d149241340" target="player_frame" title="">vklive</a>
-<br>geo-restrictions may apply:
-<a href="np_stream400.php?channel=//olimp-video.com/api/broadcast/sportboomcom/13527962" target="player_frame" title="">sportbro</a>
-</div>
-</td><td class="liveon" align="right"><div style="color: #BF0000;"><b>39 live</b></div></td></tr>
-
-<tr class="game" onclick="javascript:Menu(this)"><td><text class="game_hour" align="left">02</text>:00</td><td>Buffalo - Utah Mammoth
+<tr class="game" onclick="javascript:Menu(this)"><td><text class="game_hour" align="left">00</text>:00</td><td>Wilkes-Barre - Toronto
 <div class="gamelinks" onclick="event.stopPropagation()">
 live stream will be available closer to the game time
 </div>
 </td><td class="liveon" align="right">
 
 </td></tr>
-
-<tr class="game" onclick="javascript:Menu(this)"><td><text class="game_hour" align="left">02</text>:30</td><td>New Jersey - Chicago
-<div class="gamelinks" onclick="event.stopPropagation()">
-live stream will be available closer to the game time
-</div>
-</td><td class="liveon" align="right">
-
-</td></tr>
-</tbody>
-<tbody class="NA" style="display: block;"><tr bgcolor="#3z3z3z" align="center"><td width="30"></td><td background="pic/ico/mleagues/echl.ico" style="background-repeat: no-repeat" width="140"><b>ECHL</b></td><td width="70" align="right"><a href="standings.php?channel=131567" target="_blank">standings</a></td></tr>
-
-<tr class="game" onclick="javascript:Menu(this)"><td><text class="game_hour" align="left">00</text>:00</td><td>Rapid City - Indy Fuel
-<div class="gamelinks" onclick="event.stopPropagation()">
-<a href="np_youtube.php?channel=51TrRNBd92k" target="player_frame" title="">youtube</a>
-<a href="np_stream400.php?channel=//voodc.com/embed/85818c93a5909b84847a8595a08898858a83.html" target="player_frame" title="">vodcast</a>
-</div>
-</td><td class="liveon" align="right"><div style="color: #BF0000;"><b>2 live</b></div></td></tr>
-</tbody>
-<tbody class="NA" style="display: block;"><tr bgcolor="#3z3z3z" align="center"><td width="30"></td><td background="pic/ico/mleagues/ahl.ico" style="background-repeat: no-repeat" width="140"><b>AHL</b></td><td width="70" align="right"><a href="standings.php?channel=132458" target="_blank">standings</a></td></tr>
-
-<tr class="game" onclick="javascript:Menu(this)"><td><text class="game_hour" align="left">00</text>:05</td><td>Hartford - Providence
-<div class="gamelinks" onclick="event.stopPropagation()">
-<a href="np_stream400.php?channel=//voodc.com/embed/85818c93a5909b87847a8595a0909886857f.html" target="player_frame" title="">vodcast</a>
-<a href="//sportplus.live/hockey/57789/7288583/" target="_blank" title="(opens in a new tab)">sportpl</a>
-<br>geo-restrictions may apply:
-<a href="np_stream400.php?channel=//olimp-video.com/api/broadcast/sportboomcom/13552650" target="player_frame" title="">sportbro</a>
-</div>
-</td><td class="liveon" align="right"><div style="color: #BF0000;"><b>3 live</b></div></td></tr>
-
-<tr class="game" onclick="javascript:Menu(this)"><td><text class="game_hour" align="left">00</text>:05</td><td>Belleville - Rochester
-<div class="gamelinks" onclick="event.stopPropagation()">
-<a href="np_stream400.php?channel=//voodc.com/embed/85818c93a5909b87847a8595a18798868580.html" target="player_frame" title="">vodcast</a>
-<a href="//sportplus.live/hockey/57789/7288586/" target="_blank" title="(opens in a new tab)">sportpl</a>
-<br>geo-restrictions may apply:
-<a href="np_stream400.php?channel=//olimp-video.com/api/broadcast/sportboomcom/13552651" target="player_frame" title="">sportbro</a>
-</div>
-</td><td class="liveon" align="right"><div style="color: #BF0000;"><b>3 live</b></div></td></tr>
-
-<tr class="game" onclick="javascript:Menu(this)"><td><text class="game_hour" align="left">01</text>:00</td><td>Manitoba Moose - Rockford
-<div class="gamelinks" onclick="event.stopPropagation()">
-<a href="np_stream400.php?channel=//voodc.com/embed/85818c93a5909e8a847a8595a5879886877e.html" target="player_frame" title="">vodcast</a>
-<a href="//sportplus.live/hockey/57789/7288587/" target="_blank" title="(opens in a new tab)">sportpl</a>
-<br>geo-restrictions may apply:
-<a href="np_stream400.php?channel=//olimp-video.com/api/broadcast/sportboomcom/13552652" target="player_frame" title="">sportbro</a>
-</div>
-</td><td class="liveon" align="right"><div style="color: #BF0000;"><b>3 live</b></div></td></tr>
-
-<tr class="game" onclick="javascript:Menu(this)"><td><text class="game_hour" align="left">02</text>:00</td><td>Ontario - Calgary Wranglers
-<div class="gamelinks" onclick="event.stopPropagation()">
-<a href="np_stream400.php?channel=//voodc.com/embed/85818c93a590a286847a85969c9098868a7c.html" target="player_frame" title="">vodcast</a>
-</div>
-</td><td class="liveon" align="right"><div style="color: #BF0000;"><b>1 live</b></div></td></tr>
-
-<tr class="game" onclick="javascript:Menu(this)"><td><text class="game_hour" align="left">03</text>:00</td><td>San Jose - Abbotsford
-<div class="gamelinks" onclick="event.stopPropagation()">
-<a href="np_stream400.php?channel=//voodc.com/embed/85818c949c879b8c847a85969e8e98868c7e.html" target="player_frame" title="">vodcast</a>
-</div>
-</td><td class="liveon" align="right"><div style="color: #BF0000;"><b>1 live</b></div></td></tr>
 </tbody>
 
 </table>
@@ -490,7 +326,7 @@ Scroll Up/Down to see more games
 
 <tr><td>
 <center>
-<a href="addstream.html" target="player_frame">Add stream</a>&nbsp;|
+<a href="addstream3.html" target="player_frame">Add stream</a>&nbsp;|
 <a href="#" onclick="window.open('adv.html','newWin', 'width=400,height=200')">Advertise</a>&nbsp;|
 <a href="#" onclick="window.open('donate.html','newWin', 'width=400,height=200')">Donate</a>
 </center>
@@ -578,8 +414,8 @@ if (cth>remh) {$("#scrollinf").show("slow"); setTimeout("$('#scrollinf').hide('s
 //	filterItems();
     </script>
 
-<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'99da612e68434a29',t:'MTc2Mjk5NjEyMw=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script><script defer="" src="https://static.cloudflareinsights.com/beacon.min.js/vcd15cbe7772f49c399c6a5babf22c1241717689176015" integrity="sha512-ZpsOmlRQV6y907TI0dKBHq9Md29nnaEIPlkf84rnaERnq6zvWvPUqr2ft8M1aS28oN72PdrCzSjY4U6VaAw1EQ==" data-cf-beacon="{&quot;version&quot;:&quot;2024.11.0&quot;,&quot;token&quot;:&quot;dd999f25a8154112bc78e3498f28c252&quot;,&quot;r&quot;:1,&quot;server_timing&quot;:{&quot;name&quot;:{&quot;cfCacheStatus&quot;:true,&quot;cfEdge&quot;:true,&quot;cfExtPri&quot;:true,&quot;cfL4&quot;:true,&quot;cfOrigin&quot;:true,&quot;cfSpeedBrain&quot;:true},&quot;location_startswith&quot;:null}}" crossorigin="anonymous"></script>
-
+<script defer="" src="https://static.cloudflareinsights.com/beacon.min.js/v833ccba57c9e4d2798f2e76cebdd09a11778172276447" integrity="sha512-57MDmcccJXYtNnH+ZiBwzC4jb2rvgVCEokYN+L/nLlmO8rfYT/gIpW2A569iJ/3b+0UEasghjuZH/ma3wIs/EQ==" data-cf-beacon="{&quot;version&quot;:&quot;2024.11.0&quot;,&quot;token&quot;:&quot;dd999f25a8154112bc78e3498f28c252&quot;,&quot;r&quot;:1,&quot;server_timing&quot;:{&quot;name&quot;:{&quot;cfCacheStatus&quot;:true,&quot;cfEdge&quot;:true,&quot;cfExtPri&quot;:true,&quot;cfL4&quot;:true,&quot;cfOrigin&quot;:true,&quot;cfSpeedBrain&quot;:true},&quot;location_startswith&quot;:null}}" crossorigin="anonymous"></script>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a05016f588de10d3',t:'MTc4MDMzNjUzMA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script>
 </div>
 
 <div id="reviews" style="width: 244px; height: 485px; display: none">
@@ -636,7 +472,7 @@ reviews.style.display='block';
 		'params' : {}
 	};
 </script>
-<script type="text/javascript" src="//postinvent.com/6bdc4da1f3d522aba3ca4ab7b9fa2801/invoke.js"></script>
+<script type="text/javascript" src="//financialgobetweendancer.com/6bdc4da1f3d522aba3ca4ab7b9fa2801/invoke.js"></script>
 
 </td>
 <td witdth="490">
@@ -667,7 +503,7 @@ We do not host or upload any videos on our website. All videos/streams shown are
 </center>
 </b>
 
-<script type="text/javascript" src="//postinvent.com/44/6b/6c/446b6cb2931e4bc207ee8c71a69061f9.js"></script>
+<script type="text/javascript" src="//financialgobetweendancer.com/44/6b/6c/446b6cb2931e4bc207ee8c71a69061f9.js"></script>
 
 
 </font><iframe height="1" width="1" style="position: absolute; top: 0px; left: 0px; border: none; visibility: hidden;"></iframe></body></html>

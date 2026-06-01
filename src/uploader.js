@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, DeleteObjectsCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, DeleteObjectsCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import fs from 'fs/promises';
 import path from 'path';
 
@@ -25,6 +25,55 @@ if (B2_ENDPOINT && B2_REGION && B2_ACCESS_KEY_ID && B2_SECRET_ACCESS_KEY) {
     });
 } else {
     console.warn("⚠️ Backblaze B2 credentials are not fully configured. Uploads will be skipped.");
+}
+
+/**
+ * Downloads the published feed JSON from Backblaze B2.
+ * @returns {Promise<string|null>} Feed JSON string, or null if unavailable.
+ */
+export async function downloadFeed() {
+    if (!s3Client || isDryRun) {
+        return null;
+    }
+
+    const feedFilename = process.env.SECRET_FEED_FILENAME;
+    if (!feedFilename) {
+        console.warn('SECRET_FEED_FILENAME is not set. Cannot download feed from B2.');
+        return null;
+    }
+
+    try {
+        const command = new GetObjectCommand({
+            Bucket: B2_BUCKET_NAME,
+            Key: feedFilename,
+        });
+        const response = await s3Client.send(command);
+        return await response.Body.transformToString();
+    } catch (error) {
+        if (error.name === 'NoSuchKey' || error.$metadata?.httpStatusCode === 404) {
+            console.log('No feed object found in B2 yet.');
+            return null;
+        }
+        console.error('Error downloading feed from B2:', error.message);
+        return null;
+    }
+}
+
+/** B2 object key for a feed item's poster, derived from thumbnail URL or game id. */
+function imageKeyFromFeedItem(feedItem) {
+    const thumbnail = feedItem.thumbnail;
+    if (thumbnail) {
+        try {
+            const pathname = new URL(thumbnail).pathname;
+            const imagesIndex = pathname.indexOf('/images/');
+            if (imagesIndex !== -1) {
+                return pathname.slice(imagesIndex + 1);
+            }
+        } catch {
+            // Fall through to id-based key
+        }
+    }
+    return `images/${feedItem.id}.png`;
 }
 
 /**
@@ -133,8 +182,8 @@ export async function deleteImages(removedGames) {
     }
 
     console.log(`Deleting ${removedGames.length} old images from B2...`);
-    const objectsToDelete = removedGames.map(game => ({
-        Key: `images/${game.id}.png`
+    const objectsToDelete = removedGames.map((feedItem) => ({
+        Key: imageKeyFromFeedItem(feedItem),
     }));
 
     try {

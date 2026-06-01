@@ -1,5 +1,15 @@
 const FALLBACK_THUMBNAIL = "https://via.placeholder.com/1280x720.png?text=Image+Not+Available";
-const PROXY_SERVER = 'http://192.168.1.50:8787';
+const PROXY_SERVER = process.env.PROXY_SERVER || 'http://192.168.1.50:8787';
+const SKIP_PROXY = process.env.SKIP_PROXY === 'true';
+
+/** Stable fingerprint of raw stream URLs (before proxy rewrite) for change detection. */
+export function getStreamSignature(game) {
+    return (game.streamLinks || [])
+        .map((s) => s.url)
+        .filter(Boolean)
+        .sort()
+        .join('|');
+}
 
 /**
  * Creates a single content item for the Roku feed.
@@ -11,12 +21,11 @@ export function createFeedItem(game, imageUrl) {
     const videos = game.streamLinks.map(stream => {
         let streamUrl = stream.url;
         
-        // If the stream has a Referer header, rewrite the URL to use the proxy.
-        if (stream.headers && stream.headers.Referer) {
-            console.log(`-- Found referer for stream. Rewriting URL for hardcoded proxy: ${stream.url}`);
+        // Streamed.pk embeds usually need a Referer; optional LAN proxy rewrites the URL.
+        if (!SKIP_PROXY && stream.headers?.Referer) {
             const b64StreamUrl = Buffer.from(stream.url).toString('base64');
-            // The proxy is now hardcoded, so we don't need to pass the referer in the query.
             streamUrl = `${PROXY_SERVER}/proxy/${b64StreamUrl}`;
+            console.log(`-- Proxy rewrite: ${stream.url} -> ${streamUrl}`);
         }
         
         // Create a more descriptive quality string with the source name and domain.
@@ -49,6 +58,7 @@ export function createFeedItem(game, imageUrl) {
         thumbnail: imageUrl || FALLBACK_THUMBNAIL,
         genres: ["sports", sportGenre],
         releaseDate: game.releaseDate.split('T')[0], // Use the date part of the releaseDate
+        streamSignature: getStreamSignature(game),
         content: {
             dateAdded: game.releaseDate, // Use the full releaseDate ISO string
             duration: 3 * 60 * 60, // ~3 hours
