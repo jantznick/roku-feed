@@ -181,7 +181,7 @@ async function main() {
         }
 
         const feedItem = createFeedItem(game, posterUrl);
-        const league = game.league === 'NCAA' ? 'NCAA D1 Mens' : game.league;
+        const league = game.league === 'NCAA' ? 'NCAA D1 Mens' : game.league === 'AHL' ? 'AHL' : game.league;
 
         if (!feed[league]) {
             feed[league] = [];
@@ -204,7 +204,7 @@ async function main() {
 
     const allLeagueKeys = Object.keys(feed).filter(key => Array.isArray(feed[key]));
     const knownNonSoccerLeagues = new Set([
-        'NHL', 'NCAA D1 Mens', 'BASKETBALL', 'AMERICAN-FOOTBALL',
+        'NHL', 'NCAA D1 Mens', 'AHL', 'BASKETBALL', 'AMERICAN-FOOTBALL',
         'BASEBALL', 'HOCKEY', 'MOTOR-SPORTS', '24/7 Channels',
     ]);
     

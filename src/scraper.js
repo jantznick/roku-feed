@@ -97,7 +97,7 @@ export async function scrapeMainPage(browser) {
         const games = await page.evaluate((extractStreamLinksStr) => {
             const evaledExtractStreamLinks = new Function(`return ${extractStreamLinksStr}`)();
             const scrapedGames = [];
-            const leaguesToScrape = ["NHL", "NCAA D1 Men"];
+            const leaguesToScrape = ["NHL", "NCAA D1 Men", "AHL"];
 
             leaguesToScrape.forEach(leagueName => {
                 const allTBodies = Array.from(document.querySelectorAll("#content > #gametable > tbody"));
@@ -151,7 +151,7 @@ export async function scrapeMainPage(browser) {
                             name: gameName,
                             time,
                             releaseDate: releaseDateObj.toISOString(),
-                            league: leagueName.includes('NCAA') ? 'NCAA' : 'NHL',
+                            league: leagueName.includes('NCAA') ? 'NCAA' : leagueName.includes('AHL') ? 'AHL' : 'NHL',
                             teams: baseTeams,
                             streamLinks: streams
                         });
