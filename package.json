@@ -7,7 +7,10 @@
     "start": "node src/index.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "debug": "DEBUG=true node src/index.js",
-    "dry-run": "DRY_RUN=true node src/index.js"
+    "dry-run": "DRY_RUN=true node src/index.js",
+    "upload": "node src/upload-dist.js",
+    "upload:all": "node src/upload-dist.js --images",
+    "test-stream": "node src/test-stream.js"
   },
   "keywords": [],
   "author": "",

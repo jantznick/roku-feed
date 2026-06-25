@@ -5,13 +5,13 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "start": "node advanced-proxy.js"
+    "start": "node --env-file=../.env advanced-proxy.js"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
     "@warren-bank/hls-proxy": "github:warren-bank/HLS-Proxy#v03",
     "express": "^5.1.0",
-    "got-scraping": "^4.1.2"
+    "puppeteer": "^24.43.1"
   }
 }

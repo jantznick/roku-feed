@@ -1,5 +1,6 @@
 import puppeteer from 'puppeteer';
 import fs from 'fs/promises';
+import { safeClosePage } from './puppeteer-utils.js';
 
 const SCRAPER_URL = "https://onhockey.tv/";
 const DEBUG_FILE_PATH = "debug-output.html";
@@ -175,7 +176,7 @@ export async function scrapeMainPage(browser) {
         console.error(`An error occurred during main page scraping:`, error);
         throw error; // Re-throw to be caught by the main loop
     } finally {
-        if (page) await page.close();
+        if (page) await safeClosePage(page);
     }
 }
 
@@ -208,7 +209,7 @@ async function getVodcastStreamUrl(browser, embedUrl) {
     } catch (error) {
         console.error(`  -> Error deep scraping ${embedUrl}:`, error.message);
     } finally {
-        await page.close();
+        await safeClosePage(page);
     }
     
     return streamUrl;

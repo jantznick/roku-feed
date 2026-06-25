@@ -4,7 +4,7 @@ const createHlsProxyMiddleware = require('./node_modules/@warren-bank/hls-proxy/
 
 const app = express();
 const port = process.env.PORT || 8787;
-const proxyHost = '192.168.1.50:8787';
+const proxyHost = process.env.PROXY_HOST || '192.168.1.50:8787';
 
 const refererUrl = "https://embedsports.top/";
 const origin = new URL(refererUrl).origin;

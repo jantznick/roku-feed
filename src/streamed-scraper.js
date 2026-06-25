@@ -2,6 +2,9 @@ import puppeteer from 'puppeteer';
 import fs from 'fs/promises';
 import path from 'path';
 import Fuse from 'fuse.js';
+import { isBrowserConnected } from './puppeteer-utils.js';
+import { resolveStreamFromEmbed } from './embed-resolver.js';
+import { buildFetchHeaders } from './proxy-payload.js';
 
 const LIVE_MATCHES_URL = 'https://streamed.pk/api/matches/live';
 const STREAM_API_BASE_URL = 'https://streamed.pk/api/stream';
@@ -38,12 +41,19 @@ export async function scrapeStreamedGames(browser, sportsCategories) {
     }
 
     console.log(`\n--- Processing ${allGames.length} games from Streamed.pk... ---`);
-    
+
+    for (const game of allGames) {
+        game.finalStreamInfo = [];
+    }
+
     // 2. Deep scrape to find the final m3u8 URLs
     for (const game of allGames) {
         console.log(`\nProcessing game: ${game.title} (Category: ${game.category})`);
-        game.finalStreamInfo = [];
         for (const embedUrl of game.embedUrls) {
+            if (!isBrowserConnected(browser)) {
+                console.error('Browser disconnected; stopping remaining Streamed.pk embed scrapes.');
+                break;
+            }
             // Stop if we have already found 5 valid streams.
             if (game.finalStreamInfo.length >= 5) {
                 console.log('-- Found 5 streams. Moving to next game.');
@@ -55,12 +65,15 @@ export async function scrapeStreamedGames(browser, sportsCategories) {
                 game.finalStreamInfo.push(finalInfo);
             }
         }
+        if (!isBrowserConnected(browser)) {
+            break;
+        }
     }
 
     // 3. Transform the data into the final format for the main feed
     const dateAdded = new Date().toISOString();
     const formattedGames = allGames.map(game => {
-        const streamLinks = game.finalStreamInfo.map((info, index) => {
+        const streamLinks = (game.finalStreamInfo || []).map((info, index) => {
             if (!info) return null;
             return {
                 name: info.sourceName || `Stream ${index + 1}`, // Fallback for the name
@@ -68,6 +81,9 @@ export async function scrapeStreamedGames(browser, sportsCategories) {
                 headers: {
                     Referer: info.referer
                 },
+                requestHeaders: info.requestHeaders || {},
+                embedUrl: info.embedUrl,
+                directFetchOk: Boolean(info.directFetchOk),
                 confirmedAt: info.confirmedAt
             };
         }).filter(Boolean);
@@ -190,78 +206,45 @@ async function getLiveStreams(categories) {
     }
 }
 
-export async function getFinalStreamUrl(browser, embedUrl, sourceName) {
-    console.log(`-- Navigating to embed URL: ${embedUrl} (Source: ${sourceName})`);
-    const page = await browser.newPage();
-    await page.setCacheEnabled(false);
-    await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36');
-
-    const streamInfoPromise = new Promise((resolve) => {
-        const requestListener = (request) => {
-            const url = request.url();
-            if (url.includes('.m3u8') || url.includes('.mpd')) {
-                console.log(`[SUCCESS] Intercepted stream manifest: ${url}`);
-                page.off('request', requestListener);
-                resolve({
-                    streamUrl: url,
-                    referer: request.headers().referer,
-                    sourceName: sourceName, // Pass the source name through
-                    confirmedAt: new Date().toISOString()
-                });
-            }
-        };
-        page.on('request', requestListener);
-    });
-
+async function logReplayCheck(streamInfo) {
+    const headers = buildFetchHeaders(streamInfo.referer, streamInfo.requestHeaders);
     try {
-        await page.goto(embedUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-        
-        console.log('-- Player page loaded. Looking for play button...');
-        const buttonInfo = await findPlayButton(page);
-        
-        if (buttonInfo && !buttonInfo.isPlaying) {
-            console.log('-- Found play button. Clicking it...');
-            const { button, frame } = buttonInfo;
-            await frame.evaluate(btn => btn.click(), button);
-        } else if (buttonInfo && buttonInfo.isPlaying) {
-            console.log('-- Video is already playing.');
+        const response = await fetch(streamInfo.streamUrl, { headers, redirect: 'follow' });
+        const preview = response.ok
+            ? (await response.text()).slice(0, 60).replace(/\s+/g, ' ')
+            : `(body omitted, status ${response.status})`;
+        console.log(`  -> Immediate Node replay check: ${response.status} ${response.statusText}`);
+        if (response.ok) {
+            console.log(`  -> Manifest preview: ${preview}`);
+            console.log('  -> Will set d=1 on proxy URL (direct HTTP path)');
+        } else if (streamInfo.referer?.includes('exposestrat.com')) {
+            console.log('  -> zohanayaan CDN: Node replay often works with exposestrat.com referer.');
         } else {
-            console.log('-- No play button found. Waiting for stream to load automatically...');
+            console.log('  -> strmd CDN: Node replay usually fails (403) — proxy will use Chromium.');
         }
-
-        const streamInfo = await Promise.race([
-            streamInfoPromise,
-            new Promise(resolve => setTimeout(() => resolve(null), 15000))
-        ]);
-
-        return streamInfo;
+        return response.ok;
     } catch (error) {
-        // Suppress verbose errors during normal operation
-        return null;
-    } finally {
-        if (!page.isClosed()) await page.close();
+        console.log(`  -> Immediate Node replay check failed: ${error.message}`);
+        return false;
     }
 }
 
-async function findPlayButton(page) {
-    const playSelectors = ['#player .play-button', '.play-btn', '[aria-label="Play"]', '.jw-video.jw-reset'];
-    const pauseSelectors = ['[aria-label="Pause"]', '.vjs-playing'];
-
-    for (const frame of [page.mainFrame(), ...page.frames()]) {
-        for (const selector of pauseSelectors) {
-            const button = await frame.$(selector);
-            if (button) {
-                return { button: null, frame: null, isPlaying: true };
-            }
-        }
-        for (const selector of playSelectors) {
-            const button = await frame.$(selector);
-            if (button) {
-                return { button, frame, isPlaying: false };
-            }
-        }
+export async function getFinalStreamUrl(browser, embedUrl, sourceName) {
+    if (!isBrowserConnected(browser)) {
+        return null;
     }
-    return null;
+
+    const streamInfo = await resolveStreamFromEmbed(browser, embedUrl, {
+        sourceName,
+        verbose: true,
+        checkNodeReplay: false,
+    });
+
+    if (streamInfo) {
+        streamInfo.directFetchOk = await logReplayCheck(streamInfo);
+    }
+
+    return streamInfo;
 }
 
 export async function scrape247Channels(browser) {
@@ -309,6 +292,10 @@ export async function scrape247Channels(browser) {
     }
 
     console.log(`\n--- Processing ${allChannels.length} found 24/7 channels... ---`);
+
+    for (const channel of allChannels) {
+        channel.finalStreamInfo = [];
+    }
     
     // Use the existing deep scrape logic to get the final stream URLs
     for (const channel of allChannels) {
@@ -339,6 +326,10 @@ export async function scrape247Channels(browser) {
 
         channel.finalStreamInfo = [];
         for (const embedUrl of channel.embedUrls) {
+            if (!isBrowserConnected(browser)) {
+                console.error('Browser disconnected; stopping remaining 24/7 channel embed scrapes.');
+                break;
+            }
             // Stop if we have already found 5 valid streams.
             if (channel.finalStreamInfo.length >= 5) {
                 console.log('-- Found 5 streams for channel. Moving to next channel.');
@@ -349,16 +340,22 @@ export async function scrape247Channels(browser) {
                 channel.finalStreamInfo.push(finalInfo);
             }
         }
+        if (!isBrowserConnected(browser)) {
+            break;
+        }
     }
 
     // Format the channels into the standard game object
     const formattedChannels = allChannels.map(channel => {
-        const streamLinks = channel.finalStreamInfo.map((info, index) => {
+        const streamLinks = (channel.finalStreamInfo || []).map((info, index) => {
             if (!info) return null;
             return {
                 name: info.sourceName || `Stream ${index + 1}`, // Fallback for the name
                 url: info.streamUrl,
                 headers: { Referer: info.referer },
+                requestHeaders: info.requestHeaders || {},
+                embedUrl: info.embedUrl,
+                directFetchOk: Boolean(info.directFetchOk),
                 confirmedAt: info.confirmedAt
             };
         }).filter(Boolean);

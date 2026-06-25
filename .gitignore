@@ -1,5 +1,6 @@
 /.DS_Store
 /.env
+/logs
 /debug-output.html
 /dist
 /node_modules

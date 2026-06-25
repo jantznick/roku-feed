@@ -1,0 +1,442 @@
+nick@Nicks-MacBook-Air roku-feed % DRY_RUN=true npm start
+
+
+> roku-feed@1.0.0 start
+> node src/index.js
+
+*************************************
+
+Script Run Start: 6/25/2026, 2:04:16 PM
+
+*************************************
+
+--- Roku Feed Scraper ---
+- DEBUG MODE: ❌ Disabled
+- DRY RUN: ✅ Enabled
+- SKIP PROXY: ❌ Use proxy when Referer present
+- SKIP ONHOCKEY: ✅ Skipping onhockey.tv
+-------------------------
+Loaded previous feed from local dist/feed.json.
+
+--- Scraping Streamed.pk for: hockey, baseball, basketball, american-football, motor-sports, football ---
+Fetching live matches from Streamed.pk...
+Games found after filtering by category: { baseball: 2, 'motor-sports': 1 }
+Found 3 games across specified categories. Fetching initial stream info...
+
+--- Processing 3 games from Streamed.pk... ---
+
+Processing game: Pittsburgh Pirates vs Seattle Mariners (Category: baseball)
+-- Navigating to embed URL: https://embed.st/embed/admin/ppv-seattle-mariners-vs-pittsburgh-pirates/1 (Source: admin)
+[SUCCESS] Intercepted stream manifest: https://lb16.strmd.st/secure/zpJVyHwmsuKgLzoEHnHsRIvDyrWEewPf/rtmp/stream/SPuUbA4uy3BLV0heHwi4nDErugLxUwhqFUWkQj4-bLhhMz-OG43HnhZhN94Cc3qO984vmehDfddowobbtZ6V1OiKXg/1/playlist.m3u8
+  -> Captured Referer: https://embed.st/
+  -> Using Referer: https://embed.st/embed/admin/ppv-seattle-mariners-vs-pittsburgh-pirates/1
+-- Player page loaded. Looking for play button...
+-- No play button found. Waiting for stream to load automatically...
+-- Navigating to embed URL: https://embed.st/embed/admin/ppv-seattle-mariners-vs-pittsburgh-pirates/2 (Source: admin)
+[SUCCESS] Intercepted stream manifest: https://lb16.strmd.st/secure/bjRqdZmExxkBNMeEukrWZJQofiIvZbnr/rtmp/stream/NDbtlpWKCeNosXT5BIwzNFFG8gy5ICUKUN43w8OQGLgGgiWiPGA6mxWNink_PC5yYBXdi-EXEH6S61XQBE2kyfmpwH6LsCQ/1/playlist.m3u8
+  -> Captured Referer: https://embed.st/
+  -> Using Referer: https://embed.st/embed/admin/ppv-seattle-mariners-vs-pittsburgh-pirates/2
+-- Player page loaded. Looking for play button...
+-- Found play button. Clicking it...
+-- Navigating to embed URL: https://embed.st/embed/delta/live_mlb_pirates-mariners-live-streaming-1342018638/1 (Source: delta)
+[SUCCESS] Intercepted stream manifest: https://lb13.strmd.st/secure/odUMWTGYDySCKLakfqWDMatagyPajYGu/delta/stream/live_mlb_pirates-mariners-live-streaming-1342018638/1/playlist.m3u8
+  -> Captured Referer: https://embed.st/
+  -> Using Referer: https://embed.st/embed/delta/live_mlb_pirates-mariners-live-streaming-1342018638/1
+-- Player page loaded. Looking for play button...
+-- No play button found. Waiting for stream to load automatically...
+-- Navigating to embed URL: https://embed.st/embed/delta/live_mlb_pirates-mariners-live-streaming-1342018638/2 (Source: delta)
+[SUCCESS] Intercepted stream manifest: https://lb3.strmd.st/secure/znIpukLjufODzsLrtilZwKYoKFihxals/delta/stream/live_mlb_pirates-mariners-live-streaming-1342018638/2/playlist.m3u8
+  -> Captured Referer: https://embed.st/
+  -> Using Referer: https://embed.st/embed/delta/live_mlb_pirates-mariners-live-streaming-1342018638/2
+-- Player page loaded. Looking for play button...
+-- Found play button. Clicking it...
+-- Navigating to embed URL: https://embed.st/embed/echo/pittsburgh-pirates-vs-seattle-mariners-baseball-179225/1 (Source: echo)
+[SUCCESS] Intercepted stream manifest: https://lb11.strmd.st/secure/YGywoKANwXDarfNUeUiuwHHWFXhiKGEc/echo/stream/pittsburgh-pirates-vs-seattle-mariners-baseball-179225/1/playlist.m3u8
+  -> Captured Referer: https://embed.st/
+  -> Using Referer: https://embed.st/embed/echo/pittsburgh-pirates-vs-seattle-mariners-baseball-179225/1
+-- Player page loaded. Looking for play button...
+-- Found play button. Clicking it...
+-- Found 5 streams. Moving to next game.
+
+Processing game: Tampa Bay Rays vs Kansas City Royals (Category: baseball)
+-- Navigating to embed URL: https://embed.st/embed/admin/ppv-kansas-city-royals-vs-tampa-bay-rays/1 (Source: admin)
+[SUCCESS] Intercepted stream manifest: https://lb5.strmd.st/secure/dLYyenoqmtZLUERNYPJyIKCOgIlplvZg/rtmp/stream/LkC-nm1qHTAPS5jYQ_w9kOQn6MdAhCJP-0GcbXa8fT4ywp2kZY_1tI5NR2U_WbFMt9J8YTf3s0lHcvQf3s0/1/playlist.m3u8
+  -> Captured Referer: https://embed.st/
+  -> Using Referer: https://embed.st/embed/admin/ppv-kansas-city-royals-vs-tampa-bay-rays/1
+-- Player page loaded. Looking for play button...
+-- Found play button. Clicking it...
+-- Navigating to embed URL: https://embed.st/embed/admin/ppv-kansas-city-royals-vs-tampa-bay-rays/2 (Source: admin)
+[SUCCESS] Intercepted stream manifest: https://lb5.strmd.st/secure/KZnOVKpTiUEnrzxiiUywAIFgIIJLJAbc/rtmp/stream/EZsQdjhVU-R9pbzdLc269X9itKEMpAHqiMS4VFVhrSkQNRub2s-lS8UR7VXqx6Q5ZdwkmJ7X5r_0AyBhLonwCzu6/1/playlist.m3u8
+  -> Captured Referer: https://embed.st/
+  -> Using Referer: https://embed.st/embed/admin/ppv-kansas-city-royals-vs-tampa-bay-rays/2
+-- Player page loaded. Looking for play button...
+-- Found play button. Clicking it...
+-- Navigating to embed URL: https://embed.st/embed/golf/23397/1 (Source: golf)
+[SUCCESS] Intercepted stream manifest: https://cdn11.zohanayaan.com:1686/hls/mtampabayrays.m3u8?md5=YaSg6b3S2g6RVnYvp8cyDg&expires=1782421488
+  -> Captured Referer: https://exposestrat.com/
+  -> Using Referer: https://embed.st/embed/golf/23397/1
+-- Player page loaded. Looking for play button...
+-- No play button found. Waiting for stream to load automatically...
+
+Processing game: World Rally Championship Greece 🏁 (Category: motor-sports)
+-- Navigating to embed URL: https://embed.st/embed/echo/world-rally-championship-greece-racing-0059/1 (Source: echo)
+[SUCCESS] Intercepted stream manifest: https://lb7.strmd.st/secure/oDZDzrbnUgLYWbPpzebwJOnGiJEgwinR/echo/stream/world-rally-championship-greece-racing-0059/1/playlist.m3u8
+  -> Captured Referer: https://embed.st/
+  -> Using Referer: https://embed.st/embed/echo/world-rally-championship-greece-racing-0059/1
+-- Player page loaded. Looking for play button...
+-- No play button found. Waiting for stream to load automatically...
+-- Navigating to embed URL: https://embed.st/embed/echo/world-rally-championship-greece-racing-0059/2 (Source: echo)
+[SUCCESS] Intercepted stream manifest: https://lb4.strmd.st/secure/OtCdkMKKRnUzufcDMMDvzRmMhRpQPlCr/echo/stream/world-rally-championship-greece-racing-0059/2/playlist.m3u8
+  -> Captured Referer: https://embed.st/
+  -> Using Referer: https://embed.st/embed/echo/world-rally-championship-greece-racing-0059/2
+-- Player page loaded. Looking for play button...
+-- Found play button. Clicking it...
+✅ Found and processed 3 games from Streamed.pk.
+
+--- Scraping for 24/7 Channels ---
+No 24/7 channels found.
+
+Found 0 games from onhockey.tv (skipped) and 3 games from Streamed.pk.
+Found 0 24/7 channels.
+Total unique items to process: 3
+
+--- No new soccer leagues discovered in this run. ---
+Game comparison: 0 new, 0 removed, 3 to update, 0 unchanged.
+Cleaning up local image files...
+Removed 0 games from the feed.
+Cleared 3 existing games from the feed to prepare for update.
+⚠️ Could not load scraped-logo-data.json. NCAA logos will not be available. Error: ENOENT: no such file or directory, open '/Users/nick/repos/roku-feed/dist/scraped-logo-data.json'
+    at async open (node:internal/fs/promises:639:25)
+    at async Object.readFile (node:internal/fs/promises:1246:14)
+    at async loadLogoData (file:///Users/nick/repos/roku-feed/src/image-generator.js:13:29)
+    at async generateImages (file:///Users/nick/repos/roku-feed/src/image-generator.js:163:26)
+    at async Promise.all (index 0)
+    at async main (file:///Users/nick/repos/roku-feed/src/index.js:211:54) {
+  errno: -2,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: '/Users/nick/repos/roku-feed/dist/scraped-logo-data.json'
+}
+⚠️  Could not read image file at /Users/nick/repos/roku-feed/dist/league-logos/nhl.png. Logo will be missing.
+⚠️  Could not read image file at /Users/nick/repos/roku-feed/dist/league-logos/ncaa.png. Logo will be missing.
+⚠️  Could not read image file at /Users/nick/repos/roku-feed/dist/league-logos/nba.png. Logo will be missing.
+⚠️  Could not read image file at /Users/nick/repos/roku-feed/dist/league-logos/nfl.png. Logo will be missing.
+⚠️  Could not read image file at /Users/nick/repos/roku-feed/dist/league-logos/mlb.png. Logo will be missing.
+⚠️  Could not read image file at /Users/nick/repos/roku-feed/dist/league-logos/pga.png. Logo will be missing.
+⚠️  Could not read image file at /Users/nick/repos/roku-feed/dist/league-logos/soccer.png. Logo will be missing.
+⚠️  Could not read image file at /Users/nick/repos/roku-feed/dist/league-logos/serie-a.png. Logo will be missing.
+⚠️  Could not read image file at /Users/nick/repos/roku-feed/dist/league-logos/saudi-pro-league.png. Logo will be missing.
+⚠️  Could not read image file at /Users/nick/repos/roku-feed/dist/league-logos/efl-championship.png. Logo will be missing.
+⚠️  Could not read image file at /Users/nick/repos/roku-feed/dist/league-logos/la-liga.png. Logo will be missing.
+⚠️  Could not read image file at /Users/nick/repos/roku-feed/dist/league-logos/eredivisie.png. Logo will be missing.
+⚠️  Could not read image file at /Users/nick/repos/roku-feed/dist/league-logos/primeira-liga.png. Logo will be missing.
+⚠️  Could not read image file at /Users/nick/repos/roku-feed/dist/league-logos/ligue-1.png. Logo will be missing.
+⚠️  Could not read image file at /Users/nick/repos/roku-feed/dist/league-logos/bundesliga.png. Logo will be missing.
+⚠️  Could not read image file at /Users/nick/repos/roku-feed/dist/league-logos/super-lig.png. Logo will be missing.
+⚠️  Could not read image file at /Users/nick/repos/roku-feed/dist/league-logos/belgian-pro-league.jpg. Logo will be missing.
+⚠️  Could not read image file at /Users/nick/repos/roku-feed/dist/league-logos/scottish-premiership.svg. Logo will be missing.
+⚠️  Could not read image file at /Users/nick/repos/roku-feed/dist/league-logos/argentine-primera-division.png. Logo will be missing.
+⚠️  Could not read image file at /Users/nick/repos/roku-feed/dist/league-logos/brasileirao-serie-a.png. Logo will be missing.
+Generating 0 new images...
+✅ All new images generated.
+DRY RUN: Skipping image uploads.
+-- Proxy rewrite: https://lb16.strmd.st/secure/zpJVyHwmsuKgLzoEHnHsRIvDyrWEewPf/rtmp/stream/SPuUbA4uy3BLV0heHwi4nDErugLxUwhqFUWkQj4-bLhhMz-OG43HnhZhN94Cc3qO984vmehDfddowobbtZ6V1OiKXg/1/playlist.m3u8 -> http://192.168.1.8:8787/proxy/eyJ1IjoiaHR0cHM6Ly9sYjE2LnN0cm1kLnN0L3NlY3VyZS96cEpWeUh3bXN1S2dMem9FSG5Ic1JJdkR5cldFZXdQZi9ydG1wL3N0cmVhbS9TUHVVYkE0dXkzQkxWMGhlSHdpNG5ERXJ1Z0x4VXdocUZVV2tRajQtYkxoaE16LU9HNDNIbmhaaE45NENjM3FPOTg0dm1laERmZGRvd29iYnRaNlYxT2lLWGcvMS9wbGF5bGlzdC5tM3U4IiwiciI6Imh0dHBzOi8vZW1iZWQuc3QvZW1iZWQvYWRtaW4vcHB2LXNlYXR0bGUtbWFyaW5lcnMtdnMtcGl0dHNidXJnaC1waXJhdGVzLzEiLCJoIjp7ImFjY2VwdC1sYW5ndWFnZSI6ImVuLVVTLGVuO3E9MC45In19
+-- Proxy rewrite: https://lb16.strmd.st/secure/bjRqdZmExxkBNMeEukrWZJQofiIvZbnr/rtmp/stream/NDbtlpWKCeNosXT5BIwzNFFG8gy5ICUKUN43w8OQGLgGgiWiPGA6mxWNink_PC5yYBXdi-EXEH6S61XQBE2kyfmpwH6LsCQ/1/playlist.m3u8 -> http://192.168.1.8:8787/proxy/eyJ1IjoiaHR0cHM6Ly9sYjE2LnN0cm1kLnN0L3NlY3VyZS9ialJxZFptRXh4a0JOTWVFdWtyV1pKUW9maUl2WmJuci9ydG1wL3N0cmVhbS9ORGJ0bHBXS0NlTm9zWFQ1Qkl3ek5GRkc4Z3k1SUNVS1VONDN3OE9RR0xnR2dpV2lQR0E2bXhXTmlua19QQzV5WUJYZGktRVhFSDZTNjFYUUJFMmt5Zm1wd0g2THNDUS8xL3BsYXlsaXN0Lm0zdTgiLCJyIjoiaHR0cHM6Ly9lbWJlZC5zdC9lbWJlZC9hZG1pbi9wcHYtc2VhdHRsZS1tYXJpbmVycy12cy1waXR0c2J1cmdoLXBpcmF0ZXMvMiIsImgiOnsiYWNjZXB0LWxhbmd1YWdlIjoiZW4tVVMsZW47cT0wLjkifX0=
+-- Proxy rewrite: https://lb13.strmd.st/secure/odUMWTGYDySCKLakfqWDMatagyPajYGu/delta/stream/live_mlb_pirates-mariners-live-streaming-1342018638/1/playlist.m3u8 -> http://192.168.1.8:8787/proxy/eyJ1IjoiaHR0cHM6Ly9sYjEzLnN0cm1kLnN0L3NlY3VyZS9vZFVNV1RHWUR5U0NLTGFrZnFXRE1hdGFneVBhallHdS9kZWx0YS9zdHJlYW0vbGl2ZV9tbGJfcGlyYXRlcy1tYXJpbmVycy1saXZlLXN0cmVhbWluZy0xMzQyMDE4NjM4LzEvcGxheWxpc3QubTN1OCIsInIiOiJodHRwczovL2VtYmVkLnN0L2VtYmVkL2RlbHRhL2xpdmVfbWxiX3BpcmF0ZXMtbWFyaW5lcnMtbGl2ZS1zdHJlYW1pbmctMTM0MjAxODYzOC8xIiwiaCI6eyJhY2NlcHQtbGFuZ3VhZ2UiOiJlbi1VUyxlbjtxPTAuOSJ9fQ==
+-- Proxy rewrite: https://lb3.strmd.st/secure/znIpukLjufODzsLrtilZwKYoKFihxals/delta/stream/live_mlb_pirates-mariners-live-streaming-1342018638/2/playlist.m3u8 -> http://192.168.1.8:8787/proxy/eyJ1IjoiaHR0cHM6Ly9sYjMuc3RybWQuc3Qvc2VjdXJlL3puSXB1a0xqdWZPRHpzTHJ0aWxad0tZb0tGaWh4YWxzL2RlbHRhL3N0cmVhbS9saXZlX21sYl9waXJhdGVzLW1hcmluZXJzLWxpdmUtc3RyZWFtaW5nLTEzNDIwMTg2MzgvMi9wbGF5bGlzdC5tM3U4IiwiciI6Imh0dHBzOi8vZW1iZWQuc3QvZW1iZWQvZGVsdGEvbGl2ZV9tbGJfcGlyYXRlcy1tYXJpbmVycy1saXZlLXN0cmVhbWluZy0xMzQyMDE4NjM4LzIiLCJoIjp7ImFjY2VwdC1sYW5ndWFnZSI6ImVuLVVTLGVuO3E9MC45In19
+-- Proxy rewrite: https://lb11.strmd.st/secure/YGywoKANwXDarfNUeUiuwHHWFXhiKGEc/echo/stream/pittsburgh-pirates-vs-seattle-mariners-baseball-179225/1/playlist.m3u8 -> http://192.168.1.8:8787/proxy/eyJ1IjoiaHR0cHM6Ly9sYjExLnN0cm1kLnN0L3NlY3VyZS9ZR3l3b0tBTndYRGFyZk5VZVVpdXdISFdGWGhpS0dFYy9lY2hvL3N0cmVhbS9waXR0c2J1cmdoLXBpcmF0ZXMtdnMtc2VhdHRsZS1tYXJpbmVycy1iYXNlYmFsbC0xNzkyMjUvMS9wbGF5bGlzdC5tM3U4IiwiciI6Imh0dHBzOi8vZW1iZWQuc3QvZW1iZWQvZWNoby9waXR0c2J1cmdoLXBpcmF0ZXMtdnMtc2VhdHRsZS1tYXJpbmVycy1iYXNlYmFsbC0xNzkyMjUvMSIsImgiOnsiYWNjZXB0LWxhbmd1YWdlIjoiZW4tVVMsZW47cT0wLjkifX0=
+-- Proxy rewrite: https://lb5.strmd.st/secure/dLYyenoqmtZLUERNYPJyIKCOgIlplvZg/rtmp/stream/LkC-nm1qHTAPS5jYQ_w9kOQn6MdAhCJP-0GcbXa8fT4ywp2kZY_1tI5NR2U_WbFMt9J8YTf3s0lHcvQf3s0/1/playlist.m3u8 -> http://192.168.1.8:8787/proxy/eyJ1IjoiaHR0cHM6Ly9sYjUuc3RybWQuc3Qvc2VjdXJlL2RMWXllbm9xbXRaTFVFUk5ZUEp5SUtDT2dJbHBsdlpnL3J0bXAvc3RyZWFtL0xrQy1ubTFxSFRBUFM1allRX3c5a09RbjZNZEFoQ0pQLTBHY2JYYThmVDR5d3Aya1pZXzF0STVOUjJVX1diRk10OUo4WVRmM3MwbEhjdlFmM3MwLzEvcGxheWxpc3QubTN1OCIsInIiOiJodHRwczovL2VtYmVkLnN0L2VtYmVkL2FkbWluL3Bwdi1rYW5zYXMtY2l0eS1yb3lhbHMtdnMtdGFtcGEtYmF5LXJheXMvMSIsImgiOnsiYWNjZXB0LWxhbmd1YWdlIjoiZW4tVVMsZW47cT0wLjkifX0=
+-- Proxy rewrite: https://lb5.strmd.st/secure/KZnOVKpTiUEnrzxiiUywAIFgIIJLJAbc/rtmp/stream/EZsQdjhVU-R9pbzdLc269X9itKEMpAHqiMS4VFVhrSkQNRub2s-lS8UR7VXqx6Q5ZdwkmJ7X5r_0AyBhLonwCzu6/1/playlist.m3u8 -> http://192.168.1.8:8787/proxy/eyJ1IjoiaHR0cHM6Ly9sYjUuc3RybWQuc3Qvc2VjdXJlL0tabk9WS3BUaVVFbnJ6eGlpVXl3QUlGZ0lJSkxKQWJjL3J0bXAvc3RyZWFtL0Vac1FkamhWVS1SOXBiemRMYzI2OVg5aXRLRU1wQUhxaU1TNFZGVmhyU2tRTlJ1YjJzLWxTOFVSN1ZYcXg2UTVaZHdrbUo3WDVyXzBBeUJoTG9ud0N6dTYvMS9wbGF5bGlzdC5tM3U4IiwiciI6Imh0dHBzOi8vZW1iZWQuc3QvZW1iZWQvYWRtaW4vcHB2LWthbnNhcy1jaXR5LXJveWFscy12cy10YW1wYS1iYXktcmF5cy8yIiwiaCI6eyJhY2NlcHQtbGFuZ3VhZ2UiOiJlbi1VUyxlbjtxPTAuOSJ9fQ==
+-- Proxy rewrite: https://cdn11.zohanayaan.com:1686/hls/mtampabayrays.m3u8?md5=YaSg6b3S2g6RVnYvp8cyDg&expires=1782421488 -> http://192.168.1.8:8787/proxy/eyJ1IjoiaHR0cHM6Ly9jZG4xMS56b2hhbmF5YWFuLmNvbToxNjg2L2hscy9tdGFtcGFiYXlyYXlzLm0zdTg/bWQ1PVlhU2c2YjNTMmc2UlZuWXZwOGN5RGcmZXhwaXJlcz0xNzgyNDIxNDg4IiwiciI6Imh0dHBzOi8vZW1iZWQuc3QvZW1iZWQvZ29sZi8yMzM5Ny8xIiwiaCI6eyJhY2NlcHQtbGFuZ3VhZ2UiOiJlbi1VUyxlbjtxPTAuOSJ9fQ==
+-- Proxy rewrite: https://lb7.strmd.st/secure/oDZDzrbnUgLYWbPpzebwJOnGiJEgwinR/echo/stream/world-rally-championship-greece-racing-0059/1/playlist.m3u8 -> http://192.168.1.8:8787/proxy/eyJ1IjoiaHR0cHM6Ly9sYjcuc3RybWQuc3Qvc2VjdXJlL29EWkR6cmJuVWdMWVdiUHB6ZWJ3Sk9uR2lKRWd3aW5SL2VjaG8vc3RyZWFtL3dvcmxkLXJhbGx5LWNoYW1waW9uc2hpcC1ncmVlY2UtcmFjaW5nLTAwNTkvMS9wbGF5bGlzdC5tM3U4IiwiciI6Imh0dHBzOi8vZW1iZWQuc3QvZW1iZWQvZWNoby93b3JsZC1yYWxseS1jaGFtcGlvbnNoaXAtZ3JlZWNlLXJhY2luZy0wMDU5LzEiLCJoIjp7ImFjY2VwdC1sYW5ndWFnZSI6ImVuLVVTLGVuO3E9MC45In19
+-- Proxy rewrite: https://lb4.strmd.st/secure/OtCdkMKKRnUzufcDMMDvzRmMhRpQPlCr/echo/stream/world-rally-championship-greece-racing-0059/2/playlist.m3u8 -> http://192.168.1.8:8787/proxy/eyJ1IjoiaHR0cHM6Ly9sYjQuc3RybWQuc3Qvc2VjdXJlL090Q2RrTUtLUm5VenVmY0RNTUR2elJtTWhScFFQbENyL2VjaG8vc3RyZWFtL3dvcmxkLXJhbGx5LWNoYW1waW9uc2hpcC1ncmVlY2UtcmFjaW5nLTAwNTkvMi9wbGF5bGlzdC5tM3U4IiwiciI6Imh0dHBzOi8vZW1iZWQuc3QvZW1iZWQvZWNoby93b3JsZC1yYWxseS1jaGFtcGlvbnNoaXAtZ3JlZWNlLXJhY2luZy0wMDU5LzIiLCJoIjp7ImFjY2VwdC1sYW5ndWFnZSI6ImVuLVVTLGVuO3E9MC45In19
+Added or updated 3 games/channels in the feed.
+DRY RUN: Skipping feed upload.
+Saved feed to dist/feed.json for inspection.
+
+*************************************
+
+Script Run End: 6/25/2026, 2:04:59 PM
+Duration: 42.74 seconds
+
+--- Summary ---
+- Added: 0 items
+- Updated: 3 items
+- Unchanged: 0 items
+- Removed: 0 items
+---------------
+
+*************************************
+Scraper finished.
+nick@Nicks-MacBook-Air roku-feed % DRY_RUN=true npm start
+
+nick@Nicks-MacBook-Air roku-feed % npm start
+
+> roku-feed@1.0.0 start
+> node src/index.js
+
+*************************************
+
+Script Run Start: 6/25/2026, 2:06:08 PM
+
+*************************************
+
+--- Roku Feed Scraper ---
+- DEBUG MODE: ❌ Disabled
+- DRY RUN: ✅ Enabled
+- SKIP PROXY: ❌ Use proxy when Referer present
+- SKIP ONHOCKEY: ✅ Skipping onhockey.tv
+-------------------------
+Loaded previous feed from local dist/feed.json.
+
+--- Scraping Streamed.pk for: hockey, baseball, basketball, american-football, motor-sports, football ---
+Fetching live matches from Streamed.pk...
+Games found after filtering by category: { baseball: 2, 'motor-sports': 1 }
+Found 3 games across specified categories. Fetching initial stream info...
+
+--- Processing 3 games from Streamed.pk... ---
+
+Processing game: Pittsburgh Pirates vs Seattle Mariners (Category: baseball)
+-- Navigating to embed URL: https://embed.st/embed/admin/ppv-seattle-mariners-vs-pittsburgh-pirates/1 (Source: admin)
+[SUCCESS] Intercepted stream manifest: https://lb1.strmd.st/secure/poUIWZiMugIqLMDCIezTxyEbiKGXTGYJ/rtmp/stream/SPuUbA4uy3BLV0heHwi4nDErugLxUwhqFUWkQj4-bLhhMz-OG43HnhZhN94Cc3qO984vmehDfddowobbtZ6V1OiKXg/1/playlist.m3u8
+  -> Captured Referer: https://embed.st/
+  -> Using Referer: https://embed.st/embed/admin/ppv-seattle-mariners-vs-pittsburgh-pirates/1
+-- Navigating to embed URL: https://embed.st/embed/admin/ppv-seattle-mariners-vs-pittsburgh-pirates/2 (Source: admin)
+[SUCCESS] Intercepted stream manifest: https://lb11.strmd.st/secure/RyESXDcqpxgySFroBaJJJtJDlujChOhQ/rtmp/stream/NDbtlpWKCeNosXT5BIwzNFFG8gy5ICUKUN43w8OQGLgGgiWiPGA6mxWNink_PC5yYBXdi-EXEH6S61XQBE2kyfmpwH6LsCQ/1/playlist.m3u8
+  -> Captured Referer: https://embed.st/
+  -> Using Referer: https://embed.st/embed/admin/ppv-seattle-mariners-vs-pittsburgh-pirates/2
+-- Player page loaded. Looking for play button...
+-- Found play button. Clicking it...
+-- Navigating to embed URL: https://embed.st/embed/delta/live_mlb_pirates-mariners-live-streaming-1342018638/1 (Source: delta)
+[SUCCESS] Intercepted stream manifest: https://lb11.strmd.st/secure/gkcBwAghflzBpQXwkkKvDQLWtiOefsFc/delta/stream/live_mlb_pirates-mariners-live-streaming-1342018638/1/playlist.m3u8
+  -> Captured Referer: https://embed.st/
+  -> Using Referer: https://embed.st/embed/delta/live_mlb_pirates-mariners-live-streaming-1342018638/1
+-- Player page loaded. Looking for play button...
+-- No play button found. Waiting for stream to load automatically...
+-- Navigating to embed URL: https://embed.st/embed/delta/live_mlb_pirates-mariners-live-streaming-1342018638/2 (Source: delta)
+[SUCCESS] Intercepted stream manifest: https://lb12.strmd.st/secure/kCNroogolOWMgkRqDRsdzHOVZoRMJEtl/delta/stream/live_mlb_pirates-mariners-live-streaming-1342018638/2/playlist.m3u8
+  -> Captured Referer: https://embed.st/
+  -> Using Referer: https://embed.st/embed/delta/live_mlb_pirates-mariners-live-streaming-1342018638/2
+-- Player page loaded. Looking for play button...
+-- Found play button. Clicking it...
+-- Navigating to embed URL: https://embed.st/embed/echo/pittsburgh-pirates-vs-seattle-mariners-baseball-179225/1 (Source: echo)
+[SUCCESS] Intercepted stream manifest: https://lb19.strmd.st/secure/lAmiianiTzAGNdiNuNUbxFUDhxPGIQgW/echo/stream/pittsburgh-pirates-vs-seattle-mariners-baseball-179225/1/playlist.m3u8
+  -> Captured Referer: https://embed.st/
+  -> Using Referer: https://embed.st/embed/echo/pittsburgh-pirates-vs-seattle-mariners-baseball-179225/1
+-- Player page loaded. Looking for play button...
+-- Found play button. Clicking it...
+-- Navigating to embed URL: https://embed.st/embed/golf/23398/1 (Source: golf)
+[SUCCESS] Intercepted stream manifest: https://cdn11.zohanayaan.com:1686/hls/mpittsburghpirates.m3u8?md5=V-uaPCQK9pqCPijKMkCoRw&expires=1782421612
+  -> Captured Referer: https://exposestrat.com/
+  -> Using Referer: https://embed.st/embed/golf/23398/1
+-- Player page loaded. Looking for play button...
+-- No play button found. Waiting for stream to load automatically...
+
+Processing game: Tampa Bay Rays vs Kansas City Royals (Category: baseball)
+-- Navigating to embed URL: https://embed.st/embed/admin/ppv-kansas-city-royals-vs-tampa-bay-rays/1 (Source: admin)
+[SUCCESS] Intercepted stream manifest: https://lb3.strmd.st/secure/URRHSLGrbyGllRkFPOLKiwloRlsbJVbd/rtmp/stream/LkC-nm1qHTAPS5jYQ_w9kOQn6MdAhCJP-0GcbXa8fT4ywp2kZY_1tI5NR2U_WbFMt9J8YTf3s0lHcvQf3s0/1/playlist.m3u8
+  -> Captured Referer: https://embed.st/
+  -> Using Referer: https://embed.st/embed/admin/ppv-kansas-city-royals-vs-tampa-bay-rays/1
+-- Player page loaded. Looking for play button...
+-- No play button found. Waiting for stream to load automatically...
+-- Navigating to embed URL: https://embed.st/embed/admin/ppv-kansas-city-royals-vs-tampa-bay-rays/2 (Source: admin)
+[SUCCESS] Intercepted stream manifest: https://lb15.strmd.st/secure/wliEiJlHnpmPwAIULVQzXZJiOwyRKSfV/rtmp/stream/EZsQdjhVU-R9pbzdLc269X9itKEMpAHqiMS4VFVhrSkQNRub2s-lS8UR7VXqx6Q5ZdwkmJ7X5r_0AyBhLonwCzu6/1/playlist.m3u8
+  -> Captured Referer: https://embed.st/
+  -> Using Referer: https://embed.st/embed/admin/ppv-kansas-city-royals-vs-tampa-bay-rays/2
+-- Player page loaded. Looking for play button...
+-- No play button found. Waiting for stream to load automatically...
+-- Navigating to embed URL: https://embed.st/embed/golf/23397/1 (Source: golf)
+[SUCCESS] Intercepted stream manifest: https://cdn5.zohanayaan.com:1686/hls/mtampabayrays.m3u8?md5=lCChApCY0uAf88vL9_0MgA&expires=1782421623
+  -> Captured Referer: https://exposestrat.com/
+  -> Using Referer: https://embed.st/embed/golf/23397/1
+-- Player page loaded. Looking for play button...
+-- No play button found. Waiting for stream to load automatically...
+
+Processing game: World Rally Championship Greece 🏁 (Category: motor-sports)
+-- Navigating to embed URL: https://embed.st/embed/echo/world-rally-championship-greece-racing-0059/1 (Source: echo)
+[SUCCESS] Intercepted stream manifest: https://lb9.strmd.st/secure/WFoRFRYmPWMrsvPuXyfEANnowoUaPOSQ/echo/stream/world-rally-championship-greece-racing-0059/1/playlist.m3u8
+  -> Captured Referer: https://embed.st/
+  -> Using Referer: https://embed.st/embed/echo/world-rally-championship-greece-racing-0059/1
+-- Player page loaded. Looking for play button...
+-- Found play button. Clicking it...
+-- Navigating to embed URL: https://embed.st/embed/echo/world-rally-championship-greece-racing-0059/2 (Source: echo)
+[SUCCESS] Intercepted stream manifest: https://lb7.strmd.st/secure/hdEalaJXQiCYcixqIFfsgYoEIUqkZUoO/echo/stream/world-rally-championship-greece-racing-0059/2/playlist.m3u8
+  -> Captured Referer: https://embed.st/
+  -> Using Referer: https://embed.st/embed/echo/world-rally-championship-greece-racing-0059/2
+-- Player page loaded. Looking for play button...
+-- No play button found. Waiting for stream to load automatically...
+✅ Found and processed 3 games from Streamed.pk.
+
+--- Scraping for 24/7 Channels ---
+No 24/7 channels found.
+
+Found 0 games from onhockey.tv (skipped) and 3 games from Streamed.pk.
+Found 0 24/7 channels.
+Total unique items to process: 3
+
+--- No new soccer leagues discovered in this run. ---
+Game comparison: 0 new, 0 removed, 3 to update, 0 unchanged.
+Cleaning up local image files...
+Removed 0 games from the feed.
+Cleared 3 existing games from the feed to prepare for update.
+⚠️ Could not load scraped-logo-data.json. NCAA logos will not be available. Error: ENOENT: no such file or directory, open '/Users/nick/repos/roku-feed/dist/scraped-logo-data.json'
+    at async open (node:internal/fs/promises:639:25)
+    at async Object.readFile (node:internal/fs/promises:1246:14)
+    at async loadLogoData (file:///Users/nick/repos/roku-feed/src/image-generator.js:13:29)
+    at async generateImages (file:///Users/nick/repos/roku-feed/src/image-generator.js:163:26)
+    at async Promise.all (index 0)
+    at async main (file:///Users/nick/repos/roku-feed/src/index.js:211:54) {
+  errno: -2,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: '/Users/nick/repos/roku-feed/dist/scraped-logo-data.json'
+}
+⚠️  Could not read image file at /Users/nick/repos/roku-feed/dist/league-logos/nhl.png. Logo will be missing.
+⚠️  Could not read image file at /Users/nick/repos/roku-feed/dist/league-logos/ncaa.png. Logo will be missing.
+⚠️  Could not read image file at /Users/nick/repos/roku-feed/dist/league-logos/nba.png. Logo will be missing.
+⚠️  Could not read image file at /Users/nick/repos/roku-feed/dist/league-logos/nfl.png. Logo will be missing.
+⚠️  Could not read image file at /Users/nick/repos/roku-feed/dist/league-logos/mlb.png. Logo will be missing.
+⚠️  Could not read image file at /Users/nick/repos/roku-feed/dist/league-logos/pga.png. Logo will be missing.
+⚠️  Could not read image file at /Users/nick/repos/roku-feed/dist/league-logos/soccer.png. Logo will be missing.
+⚠️  Could not read image file at /Users/nick/repos/roku-feed/dist/league-logos/serie-a.png. Logo will be missing.
+⚠️  Could not read image file at /Users/nick/repos/roku-feed/dist/league-logos/saudi-pro-league.png. Logo will be missing.
+⚠️  Could not read image file at /Users/nick/repos/roku-feed/dist/league-logos/efl-championship.png. Logo will be missing.
+⚠️  Could not read image file at /Users/nick/repos/roku-feed/dist/league-logos/la-liga.png. Logo will be missing.
+⚠️  Could not read image file at /Users/nick/repos/roku-feed/dist/league-logos/eredivisie.png. Logo will be missing.
+⚠️  Could not read image file at /Users/nick/repos/roku-feed/dist/league-logos/primeira-liga.png. Logo will be missing.
+⚠️  Could not read image file at /Users/nick/repos/roku-feed/dist/league-logos/ligue-1.png. Logo will be missing.
+⚠️  Could not read image file at /Users/nick/repos/roku-feed/dist/league-logos/bundesliga.png. Logo will be missing.
+⚠️  Could not read image file at /Users/nick/repos/roku-feed/dist/league-logos/super-lig.png. Logo will be missing.
+⚠️  Could not read image file at /Users/nick/repos/roku-feed/dist/league-logos/belgian-pro-league.jpg. Logo will be missing.
+⚠️  Could not read image file at /Users/nick/repos/roku-feed/dist/league-logos/scottish-premiership.svg. Logo will be missing.
+⚠️  Could not read image file at /Users/nick/repos/roku-feed/dist/league-logos/argentine-primera-division.png. Logo will be missing.
+⚠️  Could not read image file at /Users/nick/repos/roku-feed/dist/league-logos/brasileirao-serie-a.png. Logo will be missing.
+Generating 0 new images...
+✅ All new images generated.
+DRY RUN: Skipping image uploads.
+-- Proxy rewrite: https://lb11.strmd.st/secure/RyESXDcqpxgySFroBaJJJtJDlujChOhQ/rtmp/stream/NDbtlpWKCeNosXT5BIwzNFFG8gy5ICUKUN43w8OQGLgGgiWiPGA6mxWNink_PC5yYBXdi-EXEH6S61XQBE2kyfmpwH6LsCQ/1/playlist.m3u8 -> http://192.168.1.8:8787/proxy/eyJ1IjoiaHR0cHM6Ly9sYjExLnN0cm1kLnN0L3NlY3VyZS9SeUVTWERjcXB4Z3lTRnJvQmFKSkp0SkRsdWpDaE9oUS9ydG1wL3N0cmVhbS9ORGJ0bHBXS0NlTm9zWFQ1Qkl3ek5GRkc4Z3k1SUNVS1VONDN3OE9RR0xnR2dpV2lQR0E2bXhXTmlua19QQzV5WUJYZGktRVhFSDZTNjFYUUJFMmt5Zm1wd0g2THNDUS8xL3BsYXlsaXN0Lm0zdTgiLCJyIjoiaHR0cHM6Ly9lbWJlZC5zdC9lbWJlZC9hZG1pbi9wcHYtc2VhdHRsZS1tYXJpbmVycy12cy1waXR0c2J1cmdoLXBpcmF0ZXMvMiIsImgiOnsiYWNjZXB0LWxhbmd1YWdlIjoiZW4tVVMsZW47cT0wLjkifX0=
+-- Proxy rewrite: https://lb11.strmd.st/secure/gkcBwAghflzBpQXwkkKvDQLWtiOefsFc/delta/stream/live_mlb_pirates-mariners-live-streaming-1342018638/1/playlist.m3u8 -> http://192.168.1.8:8787/proxy/eyJ1IjoiaHR0cHM6Ly9sYjExLnN0cm1kLnN0L3NlY3VyZS9na2NCd0FnaGZsekJwUVh3a2tLdkRRTFd0aU9lZnNGYy9kZWx0YS9zdHJlYW0vbGl2ZV9tbGJfcGlyYXRlcy1tYXJpbmVycy1saXZlLXN0cmVhbWluZy0xMzQyMDE4NjM4LzEvcGxheWxpc3QubTN1OCIsInIiOiJodHRwczovL2VtYmVkLnN0L2VtYmVkL2RlbHRhL2xpdmVfbWxiX3BpcmF0ZXMtbWFyaW5lcnMtbGl2ZS1zdHJlYW1pbmctMTM0MjAxODYzOC8xIiwiaCI6eyJhY2NlcHQtbGFuZ3VhZ2UiOiJlbi1VUyxlbjtxPTAuOSJ9fQ==
+-- Proxy rewrite: https://lb12.strmd.st/secure/kCNroogolOWMgkRqDRsdzHOVZoRMJEtl/delta/stream/live_mlb_pirates-mariners-live-streaming-1342018638/2/playlist.m3u8 -> http://192.168.1.8:8787/proxy/eyJ1IjoiaHR0cHM6Ly9sYjEyLnN0cm1kLnN0L3NlY3VyZS9rQ05yb29nb2xPV01na1JxRFJzZHpIT1Zab1JNSkV0bC9kZWx0YS9zdHJlYW0vbGl2ZV9tbGJfcGlyYXRlcy1tYXJpbmVycy1saXZlLXN0cmVhbWluZy0xMzQyMDE4NjM4LzIvcGxheWxpc3QubTN1OCIsInIiOiJodHRwczovL2VtYmVkLnN0L2VtYmVkL2RlbHRhL2xpdmVfbWxiX3BpcmF0ZXMtbWFyaW5lcnMtbGl2ZS1zdHJlYW1pbmctMTM0MjAxODYzOC8yIiwiaCI6eyJhY2NlcHQtbGFuZ3VhZ2UiOiJlbi1VUyxlbjtxPTAuOSJ9fQ==
+-- Proxy rewrite: https://lb19.strmd.st/secure/lAmiianiTzAGNdiNuNUbxFUDhxPGIQgW/echo/stream/pittsburgh-pirates-vs-seattle-mariners-baseball-179225/1/playlist.m3u8 -> http://192.168.1.8:8787/proxy/eyJ1IjoiaHR0cHM6Ly9sYjE5LnN0cm1kLnN0L3NlY3VyZS9sQW1paWFuaVR6QUdOZGlOdU5VYnhGVURoeFBHSVFnVy9lY2hvL3N0cmVhbS9waXR0c2J1cmdoLXBpcmF0ZXMtdnMtc2VhdHRsZS1tYXJpbmVycy1iYXNlYmFsbC0xNzkyMjUvMS9wbGF5bGlzdC5tM3U4IiwiciI6Imh0dHBzOi8vZW1iZWQuc3QvZW1iZWQvZWNoby9waXR0c2J1cmdoLXBpcmF0ZXMtdnMtc2VhdHRsZS1tYXJpbmVycy1iYXNlYmFsbC0xNzkyMjUvMSIsImgiOnsiYWNjZXB0LWxhbmd1YWdlIjoiZW4tVVMsZW47cT0wLjkifX0=
+-- Proxy rewrite: https://cdn11.zohanayaan.com:1686/hls/mpittsburghpirates.m3u8?md5=V-uaPCQK9pqCPijKMkCoRw&expires=1782421612 -> http://192.168.1.8:8787/proxy/eyJ1IjoiaHR0cHM6Ly9jZG4xMS56b2hhbmF5YWFuLmNvbToxNjg2L2hscy9tcGl0dHNidXJnaHBpcmF0ZXMubTN1OD9tZDU9Vi11YVBDUUs5cHFDUGlqS01rQ29SdyZleHBpcmVzPTE3ODI0MjE2MTIiLCJyIjoiaHR0cHM6Ly9lbWJlZC5zdC9lbWJlZC9nb2xmLzIzMzk4LzEiLCJoIjp7ImFjY2VwdC1sYW5ndWFnZSI6ImVuLVVTLGVuO3E9MC45In19
+-- Proxy rewrite: https://lb3.strmd.st/secure/URRHSLGrbyGllRkFPOLKiwloRlsbJVbd/rtmp/stream/LkC-nm1qHTAPS5jYQ_w9kOQn6MdAhCJP-0GcbXa8fT4ywp2kZY_1tI5NR2U_WbFMt9J8YTf3s0lHcvQf3s0/1/playlist.m3u8 -> http://192.168.1.8:8787/proxy/eyJ1IjoiaHR0cHM6Ly9sYjMuc3RybWQuc3Qvc2VjdXJlL1VSUkhTTEdyYnlHbGxSa0ZQT0xLaXdsb1Jsc2JKVmJkL3J0bXAvc3RyZWFtL0xrQy1ubTFxSFRBUFM1allRX3c5a09RbjZNZEFoQ0pQLTBHY2JYYThmVDR5d3Aya1pZXzF0STVOUjJVX1diRk10OUo4WVRmM3MwbEhjdlFmM3MwLzEvcGxheWxpc3QubTN1OCIsInIiOiJodHRwczovL2VtYmVkLnN0L2VtYmVkL2FkbWluL3Bwdi1rYW5zYXMtY2l0eS1yb3lhbHMtdnMtdGFtcGEtYmF5LXJheXMvMSIsImgiOnsiYWNjZXB0LWxhbmd1YWdlIjoiZW4tVVMsZW47cT0wLjkifX0=
+-- Proxy rewrite: https://lb15.strmd.st/secure/wliEiJlHnpmPwAIULVQzXZJiOwyRKSfV/rtmp/stream/EZsQdjhVU-R9pbzdLc269X9itKEMpAHqiMS4VFVhrSkQNRub2s-lS8UR7VXqx6Q5ZdwkmJ7X5r_0AyBhLonwCzu6/1/playlist.m3u8 -> http://192.168.1.8:8787/proxy/eyJ1IjoiaHR0cHM6Ly9sYjE1LnN0cm1kLnN0L3NlY3VyZS93bGlFaUpsSG5wbVB3QUlVTFZRelhaSmlPd3lSS1NmVi9ydG1wL3N0cmVhbS9FWnNRZGpoVlUtUjlwYnpkTGMyNjlYOWl0S0VNcEFIcWlNUzRWRlZoclNrUU5SdWIycy1sUzhVUjdWWHF4NlE1WmR3a21KN1g1cl8wQXlCaExvbndDenU2LzEvcGxheWxpc3QubTN1OCIsInIiOiJodHRwczovL2VtYmVkLnN0L2VtYmVkL2FkbWluL3Bwdi1rYW5zYXMtY2l0eS1yb3lhbHMtdnMtdGFtcGEtYmF5LXJheXMvMiIsImgiOnsiYWNjZXB0LWxhbmd1YWdlIjoiZW4tVVMsZW47cT0wLjkifX0=
+-- Proxy rewrite: https://cdn5.zohanayaan.com:1686/hls/mtampabayrays.m3u8?md5=lCChApCY0uAf88vL9_0MgA&expires=1782421623 -> http://192.168.1.8:8787/proxy/eyJ1IjoiaHR0cHM6Ly9jZG41LnpvaGFuYXlhYW4uY29tOjE2ODYvaGxzL210YW1wYWJheXJheXMubTN1OD9tZDU9bENDaEFwQ1kwdUFmODh2TDlfME1nQSZleHBpcmVzPTE3ODI0MjE2MjMiLCJyIjoiaHR0cHM6Ly9lbWJlZC5zdC9lbWJlZC9nb2xmLzIzMzk3LzEiLCJoIjp7ImFjY2VwdC1sYW5ndWFnZSI6ImVuLVVTLGVuO3E9MC45In19
+-- Proxy rewrite: https://lb9.strmd.st/secure/WFoRFRYmPWMrsvPuXyfEANnowoUaPOSQ/echo/stream/world-rally-championship-greece-racing-0059/1/playlist.m3u8 -> http://192.168.1.8:8787/proxy/eyJ1IjoiaHR0cHM6Ly9sYjkuc3RybWQuc3Qvc2VjdXJlL1dGb1JGUlltUFdNcnN2UHVYeWZFQU5ub3dvVWFQT1NRL2VjaG8vc3RyZWFtL3dvcmxkLXJhbGx5LWNoYW1waW9uc2hpcC1ncmVlY2UtcmFjaW5nLTAwNTkvMS9wbGF5bGlzdC5tM3U4IiwiciI6Imh0dHBzOi8vZW1iZWQuc3QvZW1iZWQvZWNoby93b3JsZC1yYWxseS1jaGFtcGlvbnNoaXAtZ3JlZWNlLXJhY2luZy0wMDU5LzEiLCJoIjp7ImFjY2VwdC1sYW5ndWFnZSI6ImVuLVVTLGVuO3E9MC45In19
+-- Proxy rewrite: https://lb7.strmd.st/secure/hdEalaJXQiCYcixqIFfsgYoEIUqkZUoO/echo/stream/world-rally-championship-greece-racing-0059/2/playlist.m3u8 -> http://192.168.1.8:8787/proxy/eyJ1IjoiaHR0cHM6Ly9sYjcuc3RybWQuc3Qvc2VjdXJlL2hkRWFsYUpYUWlDWWNpeHFJRmZzZ1lvRUlVcWtaVW9PL2VjaG8vc3RyZWFtL3dvcmxkLXJhbGx5LWNoYW1waW9uc2hpcC1ncmVlY2UtcmFjaW5nLTAwNTkvMi9wbGF5bGlzdC5tM3U4IiwiciI6Imh0dHBzOi8vZW1iZWQuc3QvZW1iZWQvZWNoby93b3JsZC1yYWxseS1jaGFtcGlvbnNoaXAtZ3JlZWNlLXJhY2luZy0wMDU5LzIiLCJoIjp7ImFjY2VwdC1sYW5ndWFnZSI6ImVuLVVTLGVuO3E9MC45In19
+Added or updated 3 games/channels in the feed.
+DRY RUN: Skipping feed upload.
+Saved feed to dist/feed.json for inspection.
+
+*************************************
+
+Script Run End: 6/25/2026, 2:07:12 PM
+Duration: 63.93 seconds
+
+--- Summary ---
+- Added: 0 items
+- Updated: 3 items
+- Unchanged: 0 items
+- Removed: 0 items
+---------------
+
+*************************************
+Scraper finished.
+nick@Nicks-MacBook-Air roku-feed % npm run test-stream -- --list
+
+
+> roku-feed@1.0.0 test-stream
+> node src/test-stream.js --list
+
+Found 10 stream(s):
+
+[0] BASEBALL — Pittsburgh Pirates vs Seattle Mariners
+     admin (lb11.strmd.st)
+     confirmed: 2026-06-25T19:06:41.520Z
+
+[1] BASEBALL — Pittsburgh Pirates vs Seattle Mariners
+     delta (lb11.strmd.st)
+     confirmed: 2026-06-25T19:06:44.237Z
+
+[2] BASEBALL — Pittsburgh Pirates vs Seattle Mariners
+     delta (lb12.strmd.st)
+     confirmed: 2026-06-25T19:06:46.983Z
+
+[3] BASEBALL — Pittsburgh Pirates vs Seattle Mariners
+     echo (lb19.strmd.st)
+     confirmed: 2026-06-25T19:06:49.827Z
+
+[4] BASEBALL — Pittsburgh Pirates vs Seattle Mariners
+     golf (cdn11.zohanayaan.com)
+     confirmed: 2026-06-25T19:06:52.620Z
+
+[5] BASEBALL — Tampa Bay Rays vs Kansas City Royals
+     admin (lb3.strmd.st)
+     confirmed: 2026-06-25T19:06:58.204Z
+
+[6] BASEBALL — Tampa Bay Rays vs Kansas City Royals
+     admin (lb15.strmd.st)
+     confirmed: 2026-06-25T19:07:00.982Z
+
+[7] BASEBALL — Tampa Bay Rays vs Kansas City Royals
+     golf (cdn5.zohanayaan.com)
+     confirmed: 2026-06-25T19:07:03.547Z
+
+[8] MOTOR-SPORTS — World Rally Championship Greece 🏁
+     echo (lb9.strmd.st)
+     confirmed: 2026-06-25T19:07:06.819Z
+
+[9] MOTOR-SPORTS — World Rally Championship Greece 🏁
+     echo (lb7.strmd.st)
+     confirmed: 2026-06-25T19:07:09.620Z
+
+nick@Nicks-MacBook-Air roku-feed % npm run test-stream -- --index 0
+
+
+> roku-feed@1.0.0 test-stream
+> node src/test-stream.js --index 0
+
+--- Feed stream ---
+League: BASEBALL
+Title: Pittsburgh Pirates vs Seattle Mariners
+Quality: admin (lb11.strmd.st)
+Confirmed at: 2026-06-25T19:06:41.520Z
+Feed URL: http://192.168.1.8:8787/proxy/eyJ1IjoiaHR0cHM6Ly9sYjExLnN0cm1kLnN0L3NlY3VyZS9SeUVTWERjcXB4Z3lTRnJvQmFKSkp0SkRsdWpDaE9oUS9ydG1wL3N0cmVhbS9ORGJ0bHBXS0NlTm9zWFQ1Qkl3ek5GRkc4Z3k1SUNVS1VONDN3OE9RR0xnR2dpV2lQR0E2bXhXTmlua19QQzV5WUJYZGktRVhFSDZTNjFYUUJFMmt5Zm1wd0g2THNDUS8xL3BsYXlsaXN0Lm0zdTgiLCJyIjoiaHR0cHM6Ly9lbWJlZC5zdC9lbWJlZC9hZG1pbi9wcHYtc2VhdHRsZS1tYXJpbmVycy12cy1waXR0c2J1cmdoLXBpcmF0ZXMvMiIsImgiOnsiYWNjZXB0LWxhbmd1YWdlIjoiZW4tVVMsZW47cT0wLjkifX0=
+
+Decoded proxy payload:
+  m3u8: https://lb11.strmd.st/secure/RyESXDcqpxgySFroBaJJJtJDlujChOhQ/rtmp/stream/NDbtlpWKCeNosXT5BIwzNFFG8gy5ICUKUN43w8OQGLgGgiWiPGA6mxWNink_PC5yYBXdi-EXEH6S61XQBE2kyfmpwH6LsCQ/1/playlist.m3u8
+  referer: https://embed.st/embed/admin/ppv-seattle-mariners-vs-pittsburgh-pirates/2
+  extra headers: {"accept-language":"en-US,en;q=0.9"}
+
+--- Direct upstream (what proxy should send) ---
+URL: https://lb11.strmd.st/secure/RyESXDcqpxgySFroBaJJJtJDlujChOhQ/rtmp/stream/NDbtlpWKCeNosXT5BIwzNFFG8gy5ICUKUN43w8OQGLgGgiWiPGA6mxWNink_PC5yYBXdi-EXEH6S61XQBE2kyfmpwH6LsCQ/1/playlist.m3u8
+Headers: {
+  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  Accept: '*/*',
+  'Accept-Language': 'en-US,en;q=0.9',
+  Referer: 'https://embed.st/embed/admin/ppv-seattle-mariners-vs-pittsburgh-pirates/2',
+  'accept-language': 'en-US,en;q=0.9',
+  Origin: 'https://embed.st'
+}
+Status: 403 Forbidden
+Content-Type: text/html
+Body preview: <html>
+<head><title>403 Forbidden</title></head>
+<body>
+<center><h1>403 Forbidden</h1></center>
+<hr><center>nginx</center>
+</body>
+</html>
+
+
+--- LAN proxy URL from feed ---
+URL: http://192.168.1.8:8787/proxy/eyJ1IjoiaHR0cHM6Ly9sYjExLnN0cm1kLnN0L3NlY3VyZS9SeUVTWERjcXB4Z3lTRnJvQmFKSkp0SkRsdWpDaE9oUS9ydG1wL3N0cmVhbS9ORGJ0bHBXS0NlTm9zWFQ1Qkl3ek5GRkc4Z3k1SUNVS1VONDN3OE9RR0xnR2dpV2lQR0E2bXhXTmlua19QQzV5WUJYZGktRVhFSDZTNjFYUUJFMmt5Zm1wd0g2THNDUS8xL3BsYXlsaXN0Lm0zdTgiLCJyIjoiaHR0cHM6Ly9lbWJlZC5zdC9lbWJlZC9hZG1pbi9wcHYtc2VhdHRsZS1tYXJpbmVycy12cy1waXR0c2J1cmdoLXBpcmF0ZXMvMiIsImgiOnsiYWNjZXB0LWxhbmd1YWdlIjoiZW4tVVMsZW47cT0wLjkifX0=
+Headers: { Accept: '*/*' }
+Status: 403 Forbidden
+Content-Type: text/html; charset=utf-8
+Body preview: Upstream returned 403
+
+--- Summary ---
+Upstream: FAILED
+Proxy: FAILED
+nick@Nicks-MacBook-Air roku-feed % 

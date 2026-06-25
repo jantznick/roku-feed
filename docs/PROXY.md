@@ -89,13 +89,15 @@ The scraper does **not** choose between them — only the URL shape matters: `GE
 - **Referer:** `https://embedsports.top/`
 - **Rewrite host:** `proxyHost` in file (default `192.168.1.50:8787`)
 
-### `proxy/advanced-proxy.js` (custom)
+### `proxy/advanced-proxy.js` (custom, recommended)
 
-- **Stack:** ESM, Express, `got-scraping`
-- **Route:** `GET /proxy/:b64StreamUrl`
-- **Behavior:** Decodes base64 URL, fetches manifest or segment, manually rewrites `#EXT-X-KEY` and segment lines to proxied URLs
-- **Referer:** Same hardcoded `embedsports.top`
-- **CORS:** Sets `Access-Control-Allow-Origin: *` (useful for web/mobile testing)
+- **Stack:** ESM, Express, **Puppeteer** (`proxy/browser-fetch.js`)
+- **Route:** `GET /proxy/:b64Payload` where payload is JSON `{ u, r, h?, e? }`
+- **Behavior:** Warms a headless Chromium tab on the embed page (`e`), then fetches manifests/segments via in-page `fetch()` (real browser TLS + cookies). Rewrites `#EXT-X-KEY` and segment lines to proxied URLs.
+- **Referer / headers:** Per-stream from feed payload (`r`, `h`)
+- **Embed page:** `e` in payload (re-scrape feed after this field was added)
+- **CORS:** Sets `Access-Control-Allow-Origin: *`
+- **Env:** `PROXY_HOST` (segment rewrite host), `PROXY_DEBUG`, `PROXY_BROWSER_IDLE_MS` (default 10 min)
 
 Historically the feed could pass referer in the query string; that was removed. Both proxies use a **fixed** embedsports referer. The scraper still records per-stream `Referer` only to decide **whether** to proxy, not to configure the proxy per stream.
 

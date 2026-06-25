@@ -1,3 +1,5 @@
+import { buildProxyUrl } from './proxy-payload.js';
+
 const FALLBACK_THUMBNAIL = "https://via.placeholder.com/1280x720.png?text=Image+Not+Available";
 const PROXY_SERVER = process.env.PROXY_SERVER || 'http://192.168.1.50:8787';
 const SKIP_PROXY = process.env.SKIP_PROXY === 'true';
@@ -23,8 +25,14 @@ export function createFeedItem(game, imageUrl) {
         
         // Streamed.pk embeds usually need a Referer; optional LAN proxy rewrites the URL.
         if (!SKIP_PROXY && stream.headers?.Referer) {
-            const b64StreamUrl = Buffer.from(stream.url).toString('base64');
-            streamUrl = `${PROXY_SERVER}/proxy/${b64StreamUrl}`;
+            streamUrl = buildProxyUrl(
+                stream.url,
+                stream.headers.Referer,
+                PROXY_SERVER,
+                stream.requestHeaders,
+                stream.embedUrl,
+                stream.directFetchOk
+            );
             console.log(`-- Proxy rewrite: ${stream.url} -> ${streamUrl}`);
         }
         

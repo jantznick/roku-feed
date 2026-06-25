@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import puppeteer from 'puppeteer';
+import { getPuppeteerLaunchOptions, describePuppeteerMode } from './puppeteer-config.js';
 import fs from 'fs/promises';
 import path from 'path';
 import { scrapeMainPage, deepScrapeGames } from './scraper.js';
@@ -19,6 +20,12 @@ const PRIORITY_TEAMS_BY_LEAGUE = {
     'BASEBALL': ['Chicago Cubs'],
 };
 
+/** Soccer league keys to list before other named soccer leagues in the feed. */
+const PRIORITY_SOCCER_LEAGUE_KEYS = ['United States', 'MLS', 'united-states'];
+
+/** Substrings that identify US soccer matches when sorting within a league row. */
+const US_SOCCER_TITLE_MARKERS = ['United States', 'MLS:', ' MLS ', 'USA vs', 'USA -'];
+
 function sortLeaguesWithPriorityTeams(feed) {
     for (const [leagueKey, teamNames] of Object.entries(PRIORITY_TEAMS_BY_LEAGUE)) {
         const items = feed[leagueKey];
@@ -33,6 +40,38 @@ function sortLeaguesWithPriorityTeams(feed) {
             return 0;
         });
     }
+}
+
+function isUsSoccerFeedItem(item) {
+    const text = `${item.title} ${item.shortDescription || ''}`;
+    return US_SOCCER_TITLE_MARKERS.some((marker) => text.includes(marker));
+}
+
+function prioritizeUsSoccer(feed, knownNonSoccerLeagues) {
+    for (const leagueKey of Object.keys(feed)) {
+        if (!Array.isArray(feed[leagueKey]) || knownNonSoccerLeagues.has(leagueKey)) {
+            continue;
+        }
+        feed[leagueKey].sort((a, b) => {
+            const aUs = isUsSoccerFeedItem(a);
+            const bUs = isUsSoccerFeedItem(b);
+            if (aUs && !bUs) return -1;
+            if (!aUs && bUs) return 1;
+            return 0;
+        });
+    }
+}
+
+function normalizeLeagueKey(leagueKey) {
+    return leagueKey.toLowerCase().replace(/-/g, ' ').trim();
+}
+
+function soccerLeagueSortRank(leagueKey) {
+    const normalized = normalizeLeagueKey(leagueKey);
+    const index = PRIORITY_SOCCER_LEAGUE_KEYS.findIndex(
+        (key) => normalizeLeagueKey(key) === normalized
+    );
+    return index === -1 ? PRIORITY_SOCCER_LEAGUE_KEYS.length : index;
 }
 
 async function cleanupLocalImages(removedGames) {
@@ -64,9 +103,11 @@ async function main() {
   console.log(`- DEBUG MODE: ${process.env.DEBUG === 'true' ? '✅ Enabled' : '❌ Disabled'}`);
   console.log(`- DRY RUN: ${process.env.DRY_RUN === 'true' ? '✅ Enabled' : '❌ Disabled'}`);
   console.log(`- SKIP PROXY: ${process.env.SKIP_PROXY === 'true' ? '✅ Direct stream URLs only' : '❌ Use proxy when Referer present'}`);
+  console.log(`- SKIP ONHOCKEY: ${process.env.SKIP_ONHOCKEY === 'true' ? '✅ Skipping onhockey.tv' : '❌ Scraping onhockey.tv'}`);
   console.log('-------------------------');
 
-  const browser = await puppeteer.launch({ headless: true });
+  const browser = await puppeteer.launch(getPuppeteerLaunchOptions());
+  console.log(`- Chromium: ${describePuppeteerMode()}`);
 
   try {
     // 1. Get the previous feed, which serves as our cache
@@ -78,7 +119,8 @@ async function main() {
     }
 
     // 2. Scrape for games
-    const onHockeyGames = await scrapeMainPage(browser);
+    const skipOnHockey = process.env.SKIP_ONHOCKEY === 'true';
+    const onHockeyGames = skipOnHockey ? [] : await scrapeMainPage(browser);
 
     // USA-centric sports on Streamed.pk (hockey also covered by onhockey.tv above)
     const sportsCategories = [
@@ -86,7 +128,8 @@ async function main() {
       'baseball',
       'basketball',
       'american-football',
-      'motor-sports'
+      'motor-sports',
+      'football'
     ];
     const streamedGames = await scrapeStreamedGames(browser, sportsCategories);
     const channels247 = await scrape247Channels(browser);
@@ -94,7 +137,7 @@ async function main() {
 
     // Combine the games from all sources
     const allCurrentGames = [...onHockeyGames, ...streamedGames, ...channels247];
-    console.log(`\nFound ${onHockeyGames.length} games from onhockey.tv and ${streamedGames.length} games from Streamed.pk.`);
+    console.log(`\nFound ${onHockeyGames.length} games from onhockey.tv${skipOnHockey ? ' (skipped)' : ''} and ${streamedGames.length} games from Streamed.pk.`);
     console.log(`Found ${channels247.length} 24/7 channels.`);
     console.log(`Total unique items to process: ${allCurrentGames.length}`);
 
@@ -141,7 +184,9 @@ async function main() {
     const streamedToProcess = gamesToProcess.filter(game => streamedGames.some(g => g.id === game.id));
     const channelsToProcess = gamesToProcess.filter(game => channels247.some(g => g.id === game.id));
     
-    const onHockeyWithStreams = await deepScrapeGames(browser, onHockeyToProcess);
+    const onHockeyWithStreams = skipOnHockey
+        ? []
+        : await deepScrapeGames(browser, onHockeyToProcess);
 
     // The streamed games and channels already have their streams, so we just combine everything.
     const allGamesToAddOrUpdate = [...onHockeyWithStreams, ...streamedToProcess, ...channelsToProcess];
@@ -192,6 +237,13 @@ async function main() {
 
     sortLeaguesWithPriorityTeams(feed);
 
+    const allLeagueKeys = Object.keys(feed).filter(key => Array.isArray(feed[key]));
+    const knownNonSoccerLeagues = new Set([
+        'NHL', 'NCAA D1 Mens', 'AHL', 'BASKETBALL', 'AMERICAN-FOOTBALL',
+        'BASEBALL', 'HOCKEY', 'MOTOR-SPORTS', '24/7 Channels',
+    ]);
+    prioritizeUsSoccer(feed, knownNonSoccerLeagues);
+
     // 6. Finalize and save the feed
     feed.lastUpdated = new Date().toISOString();
 
@@ -202,30 +254,33 @@ async function main() {
         language: feed.language,
     };
 
-    const allLeagueKeys = Object.keys(feed).filter(key => Array.isArray(feed[key]));
-    const knownNonSoccerLeagues = new Set([
-        'NHL', 'NCAA D1 Mens', 'AHL', 'BASKETBALL', 'AMERICAN-FOOTBALL',
-        'BASEBALL', 'HOCKEY', 'MOTOR-SPORTS', '24/7 Channels',
-    ]);
-    
     const nonSoccerLeagues = allLeagueKeys.filter(key => knownNonSoccerLeagues.has(key)).sort();
     const soccerLeagues = allLeagueKeys.filter(key => !knownNonSoccerLeagues.has(key));
     
     const genericFootball = soccerLeagues.find(key => key === 'FOOTBALL');
-    const specificSoccerLeagues = soccerLeagues.filter(key => key !== 'FOOTBALL').sort();
+    const namedSoccerLeagues = soccerLeagues.filter(key => key !== 'FOOTBALL');
+    const prioritySoccerLeagues = namedSoccerLeagues
+        .filter((key) => soccerLeagueSortRank(key) < PRIORITY_SOCCER_LEAGUE_KEYS.length)
+        .sort((a, b) => soccerLeagueSortRank(a) - soccerLeagueSortRank(b));
+    const otherSoccerLeagues = namedSoccerLeagues
+        .filter((key) => soccerLeagueSortRank(key) >= PRIORITY_SOCCER_LEAGUE_KEYS.length)
+        .sort((a, b) => a.localeCompare(b));
 
     // Add non-soccer leagues first
     nonSoccerLeagues.forEach(league => {
         if (feed[league] && feed[league].length > 0) finalFeed[league] = feed[league];
     });
 
-    // Add the generic FOOTBALL league next
+    // US / MLS soccer sections, then generic FOOTBALL, then other soccer leagues
+    prioritySoccerLeagues.forEach(league => {
+        if (feed[league] && feed[league].length > 0) finalFeed[league] = feed[league];
+    });
+
     if (genericFootball && feed[genericFootball] && feed[genericFootball].length > 0) {
         finalFeed[genericFootball] = feed[genericFootball];
     }
 
-    // Add specific soccer leagues last
-    specificSoccerLeagues.forEach(league => {
+    otherSoccerLeagues.forEach(league => {
         if (feed[league] && feed[league].length > 0) finalFeed[league] = feed[league];
     });
 
@@ -245,7 +300,13 @@ async function main() {
   } catch (error) {
     console.error("Scraping process failed:", error);
   } finally {
-    await browser.close();
+    try {
+      if (browser?.isConnected?.()) {
+        await browser.close();
+      }
+    } catch (error) {
+      console.warn(`Could not close browser cleanly: ${error.message}`);
+    }
     
     const endTime = new Date();
     const duration = (endTime - startTime) / 1000; // in seconds
