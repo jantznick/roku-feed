@@ -5,7 +5,8 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "start": "node --env-file=../.env advanced-proxy.js"
+    "start": "node --env-file=../.env advanced-proxy.js",
+    "start:docker": "node advanced-proxy.js"
   },
   "author": "",
   "license": "ISC",

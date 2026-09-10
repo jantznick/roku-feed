@@ -1,0 +1,30 @@
+# Advanced HLS proxy (Puppeteer embed-first).
+# From repo root:
+#   docker compose -f proxy/docker-compose.yml up -d --build
+#
+# Or from proxy/:
+#   docker compose up -d --build
+
+services:
+  hls-proxy:
+    build:
+      context: ..
+      dockerfile: proxy/Dockerfile
+    image: roku-hls-proxy:latest
+    container_name: roku-hls-proxy
+    # Loads PROXY_HOST / PROXY_* from the repo-root .env
+    env_file:
+      - ../.env
+    ports:
+      # Host:container — change host side if 8787 is taken
+      - "${PROXY_PORT:-8787}:8787"
+    environment:
+      PROXY_HEADLESS: "true"
+      PORT: "8787"
+      # Must match what Roku/phones use and what the scraper writes (PROXY_SERVER without http://)
+      PROXY_HOST: "${PROXY_HOST:-192.168.1.50:8787}"
+      PROXY_DEBUG: "${PROXY_DEBUG:-false}"
+      PROXY_BROWSER_IDLE_MS: "${PROXY_BROWSER_IDLE_MS:-600000}"
+    # Chromium needs more than Docker's default 64MB /dev/shm
+    shm_size: "1gb"
+    restart: unless-stopped

@@ -123,18 +123,54 @@ sequenceDiagram
 
 ## Running the proxy
 
-1. Install dependencies in `proxy/` (see `package-lock.json`; you may need a local `package.json` with `express` and the chosen stack).
-2. Start one server:
+### Docker (recommended on a server)
+
+The advanced proxy needs Chromium (Puppeteer). Build from the **repo root** so `src/` is available:
+
+```bash
+# From repo root — uses proxy/docker-compose.yml
+docker compose -f proxy/docker-compose.yml up -d --build
+```
+
+Required env (set in shell, a `.env` next to the compose file, or your orchestrator):
+
+```env
+PROXY_HOST=192.168.1.50:8787
+PROXY_PORT=8787
+PROXY_HEADLESS=true
+```
+
+- Publish `8787` (or set `PROXY_PORT` if that host port is taken).
+- `PROXY_HOST` must be the LAN IP:port clients use (same as scraper’s `PROXY_SERVER` without `http://`).
+- Container gets `shm_size: 1gb` so Chromium does not crash.
+
+Health check:
+
+```bash
+curl http://192.168.1.50:8787/
+# expect: Proxy server is running (embed-first stream resolve)
+```
+
+Logs:
+
+```bash
+docker compose -f proxy/docker-compose.yml logs -f
+```
+
+### Without Docker
+
+1. Install dependencies in `proxy/`.
+2. Set `PROXY_HEADLESS=true` and `PROXY_HOST=192.168.1.50:8787` in the repo `.env`.
+3. Start:
 
    ```bash
    cd proxy
-   node index.js
-   # or
-   node advanced-proxy.js
+   npm start
+   # → node --env-file=../.env advanced-proxy.js
    ```
 
-3. Ensure `PROXY_SERVER` in `.env` matches a host/IP your **Roku and phone** can reach (not `localhost` on the TV).
-4. Regenerate the feed with `SKIP_PROXY` unset or `false`.
+4. Ensure `PROXY_SERVER` in the scraper `.env` matches a host/IP your **Roku and phone** can reach (not `localhost` on the TV).
+5. Regenerate the feed with `SKIP_PROXY` unset or `false`.
 
 ## Testing without the proxy
 
@@ -152,5 +188,7 @@ For a quick proxy URL preview from a single embed, see `src/test-stream.js`.
 | `src/streamed-scraper.js` | Sets `headers.Referer` on Streamed.pk streams |
 | `src/scraper.js` | onhockey streams (usually no referer → direct) |
 | `proxy/index.js` | HLS proxy (library) |
-| `proxy/advanced-proxy.js` | HLS proxy (custom) |
+| `proxy/advanced-proxy.js` | HLS proxy (custom, embed-first) |
+| `proxy/Dockerfile` | Docker image for advanced proxy |
+| `proxy/docker-compose.yml` | Compose service (`roku-hls-proxy`) |
 | `docs/LOCAL_SETUP.md` | General local setup |
