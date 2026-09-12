@@ -17,7 +17,7 @@ app.get('/api/health', (_req, res) => {
 
 app.get('/api/config', (_req, res) => {
   res.json({
-    defaultFeedUrl: DEFAULT_FEED_URL,
+    feedConfigured: Boolean(DEFAULT_FEED_URL),
     proxyRewriteFrom: PROXY_REWRITE_FROM || null,
     proxyRewriteTo: PROXY_REWRITE_TO || null,
   });
@@ -25,12 +25,12 @@ app.get('/api/config', (_req, res) => {
 
 /**
  * Server-side feed fetch avoids browser CORS issues with Backblaze/S3.
- * Optional URL rewrite so LAN proxy hosts match what the phone can reach.
+ * Feed URL comes only from FEED_URL env (no client override).
  */
-app.get('/api/feed', async (req, res) => {
-  const feedUrl = String(req.query.url || DEFAULT_FEED_URL || '').trim();
+app.get('/api/feed', async (_req, res) => {
+  const feedUrl = DEFAULT_FEED_URL.trim();
   if (!feedUrl) {
-    res.status(400).json({ error: 'Missing feed url (set FEED_URL or pass ?url=)' });
+    res.status(500).json({ error: 'FEED_URL is not set on the server' });
     return;
   }
 

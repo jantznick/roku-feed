@@ -164,8 +164,9 @@ Minimal browser UI under `web/` — browse leagues and play proxied HLS on your 
 ```bash
 cd web
 export FEED_URL='https://f004.backblazeb2.com/file/<bucket>/<SECRET_FEED_FILENAME>'
+export WEB_PORT=8091   # host port if 8080 is taken
 docker compose up -d --build
-# open http://<server-lan-ip>:8080
+# open http://<server-lan-ip>:$WEB_PORT
 ```
 
 See **[web/README.md](../web/README.md)** for env vars (including optional proxy host rewrite).

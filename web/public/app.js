@@ -1,13 +1,8 @@
-const FEED_STORAGE_KEY = 'rokuFeedViewer.feedUrl';
 const LEAGUE_STORAGE_KEY = 'rokuFeedViewer.league';
 
 const META_KEYS = new Set(['providerName', 'lastUpdated', 'language', 'scriptDuration']);
 
 const els = {
-  settingsBtn: document.getElementById('settingsBtn'),
-  settingsPanel: document.getElementById('settingsPanel'),
-  feedUrlInput: document.getElementById('feedUrlInput'),
-  saveFeedBtn: document.getElementById('saveFeedBtn'),
   reloadBtn: document.getElementById('reloadBtn'),
   status: document.getElementById('status'),
   leagueNav: document.getElementById('leagueNav'),
@@ -26,8 +21,6 @@ let feed = null;
 let leagues = [];
 let activeLeague = '';
 /** @type {any} */
-let activeGame = null;
-/** @type {any} */
 let hls = null;
 
 function setStatus(message, isError = false) {
@@ -35,40 +28,17 @@ function setStatus(message, isError = false) {
   els.status.classList.toggle('error', Boolean(isError));
 }
 
-function getStoredFeedUrl() {
-  return localStorage.getItem(FEED_STORAGE_KEY) || '';
-}
-
 function leagueEntries(data) {
   return Object.keys(data).filter((key) => Array.isArray(data[key]) && !META_KEYS.has(key));
 }
 
-async function loadConfig() {
-  try {
-    const res = await fetch('/api/config');
-    if (!res.ok) return;
-    const config = await res.json();
-    if (!getStoredFeedUrl() && config.defaultFeedUrl) {
-      els.feedUrlInput.value = config.defaultFeedUrl;
-    }
-  } catch {
-    // optional
-  }
-}
-
-async function loadFeed(url) {
-  const feedUrl = (url || els.feedUrlInput.value || '').trim();
-  if (!feedUrl) {
-    els.settingsPanel.classList.remove('hidden');
-    setStatus('Set a feed URL to continue.', true);
-    return;
-  }
-
+async function loadFeed() {
   setStatus('Loading feed…');
   els.gameList.innerHTML = '<p class="empty">Loading…</p>';
 
   try {
-    const res = await fetch(`/api/feed?url=${encodeURIComponent(feedUrl)}`);
+    // Uses FEED_URL from the server env — no client-side URL entry.
+    const res = await fetch('/api/feed');
     const payload = await res.json();
     if (!res.ok) {
       throw new Error(payload.error || `Feed error ${res.status}`);
@@ -76,8 +46,6 @@ async function loadFeed(url) {
 
     feed = payload;
     leagues = leagueEntries(feed);
-    localStorage.setItem(FEED_STORAGE_KEY, feedUrl);
-    els.feedUrlInput.value = feedUrl;
 
     const savedLeague = localStorage.getItem(LEAGUE_STORAGE_KEY);
     activeLeague = leagues.includes(savedLeague) ? savedLeague : (leagues[0] || '');
@@ -94,8 +62,7 @@ async function loadFeed(url) {
     leagues = [];
     els.leagueNav.innerHTML = '';
     els.gameList.innerHTML = '<p class="empty">Could not load feed.</p>';
-    setStatus(error.message || 'Failed to load feed', true);
-    els.settingsPanel.classList.remove('hidden');
+    setStatus(error.message || 'Failed to load feed. Is FEED_URL set?', true);
   }
 }
 
@@ -142,7 +109,6 @@ function renderGames() {
 }
 
 function openGame(game, league) {
-  activeGame = game;
   els.playerSection.classList.remove('hidden');
   els.nowLeague.textContent = league;
   els.nowTitle.textContent = game.title || 'Stream';
@@ -222,7 +188,6 @@ function closePlayer() {
   els.video.removeAttribute('src');
   els.video.load();
   els.playerSection.classList.add('hidden');
-  activeGame = null;
 }
 
 function escapeHtml(value) {
@@ -237,38 +202,10 @@ function escapeAttr(value) {
   return escapeHtml(value).replaceAll("'", '&#39;');
 }
 
-els.settingsBtn.addEventListener('click', () => {
-  els.settingsPanel.classList.toggle('hidden');
-});
-
-els.saveFeedBtn.addEventListener('click', () => {
-  loadFeed(els.feedUrlInput.value);
-});
-
 els.reloadBtn.addEventListener('click', () => {
-  loadFeed(els.feedUrlInput.value || getStoredFeedUrl());
+  loadFeed();
 });
 
 els.closePlayerBtn.addEventListener('click', closePlayer);
 
-els.feedUrlInput.addEventListener('keydown', (event) => {
-  if (event.key === 'Enter') {
-    loadFeed(els.feedUrlInput.value);
-  }
-});
-
-(async function init() {
-  await loadConfig();
-  const stored = getStoredFeedUrl();
-  if (stored) {
-    els.feedUrlInput.value = stored;
-    els.settingsPanel.classList.add('hidden');
-    await loadFeed(stored);
-  } else if (els.feedUrlInput.value) {
-    els.settingsPanel.classList.add('hidden');
-    await loadFeed(els.feedUrlInput.value);
-  } else {
-    els.settingsPanel.classList.remove('hidden');
-    setStatus('Paste your feed URL to start.');
-  }
-})();
+loadFeed();

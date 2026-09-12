@@ -86,40 +86,8 @@ button.active {
   line-height: 0.95;
 }
 
-.settings {
-  background: var(--bg-elevated);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 1rem;
-  margin-bottom: 1rem;
-  box-shadow: var(--shadow);
-}
-
-.settings label {
-  display: block;
-  margin-bottom: 0.4rem;
-  color: var(--muted);
-  font-size: 0.9rem;
-}
-
-.settings input {
-  width: 100%;
-  border-radius: 12px;
-  border: 1px solid var(--line);
-  background: #0a101c;
-  color: var(--text);
-  padding: 0.85rem 0.95rem;
-  margin-bottom: 0.75rem;
-}
-
-.row {
-  display: flex;
-  gap: 0.6rem;
-  flex-wrap: wrap;
-}
-
 .status {
-  margin: 0.75rem 0 0;
+  margin: 0 0 1rem;
   color: var(--muted);
   font-size: 0.9rem;
   min-height: 1.2em;

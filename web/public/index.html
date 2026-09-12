@@ -20,18 +20,10 @@
         <p class="eyebrow">Internal viewer</p>
         <h1>Roku Feed</h1>
       </div>
-      <button id="settingsBtn" class="ghost" type="button" aria-label="Settings">Feed</button>
+      <button id="reloadBtn" class="ghost" type="button">Reload</button>
     </header>
 
-    <section id="settingsPanel" class="settings hidden">
-      <label for="feedUrlInput">Feed URL</label>
-      <input id="feedUrlInput" type="url" autocomplete="off" spellcheck="false" placeholder="https://…/feed.json" />
-      <div class="row">
-        <button id="saveFeedBtn" type="button">Save &amp; load</button>
-        <button id="reloadBtn" class="ghost" type="button">Reload</button>
-      </div>
-      <p id="status" class="status"></p>
-    </section>
+    <p id="status" class="status"></p>
 
     <section id="playerSection" class="player-section hidden">
       <div class="player-shell">
