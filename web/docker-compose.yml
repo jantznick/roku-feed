@@ -1,0 +1,24 @@
+# Basic web stream viewer for internal / VPN testing.
+# From repo root:
+#   docker compose -f web/docker-compose.yml up -d --build
+#
+# Open http://<server-lan-ip>:8080 on your phone (VPN).
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: roku-feed-web:latest
+    container_name: roku-feed-web
+    ports:
+      - "${WEB_PORT:-8080}:8080"
+    environment:
+      PORT: "8080"
+      # Public feed JSON (Backblaze/S3). Browser never hits this directly — server proxies it.
+      FEED_URL: "${FEED_URL:-}"
+      # Optional: rewrite proxy host inside feed video URLs for phone/VPN reachability.
+      # Example: PROXY_REWRITE_FROM=192.168.1.50:8787  PROXY_REWRITE_TO=192.168.1.50:8787
+      PROXY_REWRITE_FROM: "${PROXY_REWRITE_FROM:-}"
+      PROXY_REWRITE_TO: "${PROXY_REWRITE_TO:-}"
+    restart: unless-stopped
