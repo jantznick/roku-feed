@@ -15,6 +15,7 @@ export function getPuppeteerLaunchOptions() {
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
             '--disable-gpu',
+            '--disable-blink-features=AutomationControlled',
             ...(headless ? [] : ['--start-maximized']),
         ],
         defaultViewport: headless ? { width: 1280, height: 720 } : null,
