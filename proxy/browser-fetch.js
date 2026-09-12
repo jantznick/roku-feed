@@ -76,51 +76,176 @@ async function applyRequestHeaders(page, referer) {
     await page.setExtraHTTPHeaders(headers);
 }
 
+/** @type {Map<string, Promise<void>>} */
+const embedSegmentLocks = new Map();
+
+/**
+ * Serialize segment fetches that share a page so we don't stomp concurrent evaluate/CDP calls.
+ * @template T
+ * @param {string} key
+ * @param {() => Promise<T>} fn
+ * @returns {Promise<T>}
+ */
+async function withPageLock(key, fn) {
+    const previous = embedSegmentLocks.get(key) || Promise.resolve();
+    let release;
+    const gate = new Promise((resolve) => {
+        release = resolve;
+    });
+    const chain = previous.catch(() => {}).then(() => gate);
+    embedSegmentLocks.set(key, chain);
+    await previous.catch(() => {});
+    try {
+        return await fn();
+    } finally {
+        release();
+        if (embedSegmentLocks.get(key) === chain) {
+            embedSegmentLocks.delete(key);
+        }
+    }
+}
+
+/**
+ * Fetch a segment via in-page fetch() on an embed-origin page (real cookies + Origin).
+ * page.goto(.ts) aborts; blank tabs lack the embed Origin and fail CORS/auth.
+ * @param {import('puppeteer').Page} page
+ * @param {string} url
+ */
+async function fetchSegmentInPage(page, url) {
+    logStep(`In-page segment fetch: ${url.slice(0, 100)}...`);
+
+    const result = await page.evaluate(async (segmentUrl) => {
+        try {
+            const response = await fetch(segmentUrl, {
+                credentials: 'include',
+                cache: 'no-store',
+                redirect: 'follow',
+            });
+            if (!response.ok) {
+                return { ok: false, status: response.status, error: `HTTP ${response.status}` };
+            }
+            const buffer = await response.arrayBuffer();
+            const blob = new Blob([buffer]);
+            const dataUrl = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(String(reader.result || ''));
+                reader.onerror = () => reject(reader.error || new Error('FileReader failed'));
+                reader.readAsDataURL(blob);
+            });
+            const comma = dataUrl.indexOf(',');
+            return {
+                ok: true,
+                status: response.status,
+                contentType: response.headers.get('content-type') || 'video/MP2T',
+                base64: comma >= 0 ? dataUrl.slice(comma + 1) : '',
+            };
+        } catch (error) {
+            return { ok: false, status: 0, error: error?.message || String(error) };
+        }
+    }, url);
+
+    if (!result?.ok) {
+        throw new Error(result?.error || 'in-page segment fetch failed');
+    }
+
+    const body = Buffer.from(result.base64, 'base64');
+    logStep(`In-page segment fetch OK (${body.length} bytes)`);
+    return {
+        statusCode: result.status,
+        headers: { 'content-type': result.contentType },
+        body,
+    };
+}
+
+/**
+ * CDP fallback when page.evaluate(fetch) is CORS-blocked but the browser can still load the URL.
+ * @param {import('puppeteer').Page} page
+ * @param {string} url
+ */
+async function fetchSegmentViaCdp(page, url) {
+    logStep(`CDP segment fetch: ${url.slice(0, 100)}...`);
+    const client = await page.createCDPSession();
+
+    try {
+        const { frameTree } = await client.send('Page.getFrameTree');
+        const frameId = frameTree?.frame?.id;
+        if (!frameId) {
+            throw new Error('CDP frame id missing');
+        }
+
+        const { resource } = await client.send('Network.loadNetworkResource', {
+            frameId,
+            url,
+            options: {
+                disableCache: true,
+                includeCredentials: true,
+            },
+        });
+
+        if (!resource?.success) {
+            throw new Error(resource?.netErrorName || resource?.netError || 'CDP loadNetworkResource failed');
+        }
+        if (resource.httpStatusCode && resource.httpStatusCode >= 400) {
+            throw new Error(`CDP HTTP ${resource.httpStatusCode}`);
+        }
+        if (!resource.stream) {
+            throw new Error('CDP resource missing stream handle');
+        }
+
+        const chunks = [];
+        for (;;) {
+            const read = await client.send('IO.read', {
+                handle: resource.stream,
+                size: 1024 * 1024,
+            });
+            if (read.data) {
+                chunks.push(Buffer.from(read.data, read.base64Encoded ? 'base64' : 'utf8'));
+            }
+            if (read.eof) {
+                break;
+            }
+        }
+        await client.send('IO.close', { handle: resource.stream }).catch(() => {});
+
+        const body = Buffer.concat(chunks);
+        logStep(`CDP segment fetch OK (${body.length} bytes)`);
+        return {
+            statusCode: resource.httpStatusCode || 200,
+            headers: { 'content-type': 'video/MP2T' },
+            body,
+        };
+    } finally {
+        await client.detach().catch(() => {});
+    }
+}
+
+/**
+ * Prefer in-page fetch on an embed-origin tab; fall back to CDP.
+ * @param {import('puppeteer').Page} page
+ * @param {string} url
+ * @param {string} [lockKey]
+ */
+async function fetchSegmentFromBrowserPage(page, url, lockKey = 'page') {
+    return withPageLock(lockKey, async () => {
+        try {
+            return await fetchSegmentInPage(page, url);
+        } catch (inPageError) {
+            logStep(`In-page segment fetch failed (${inPageError.message}); trying CDP`);
+            return fetchSegmentViaCdp(page, url);
+        }
+    });
+}
+
 /**
  * Manifests: CDP capture via page navigation (in-page fetch blocked by CORS on strmd).
- * Segments: page.goto + buffer.
+ * Segments: in-page fetch / CDP on an embed-origin page — never page.goto(.ts).
  */
 async function fetchOnPage(page, url, referer, isText) {
     if (isText) {
         return fetchManifestOnPage(page, url, referer, logStep);
     }
 
-    await applyRequestHeaders(page, referer);
-
-    logStep(`Navigating to fetch segment: ${url.slice(0, 100)}...`);
-
-    let response;
-    try {
-        response = await page.goto(url, {
-            waitUntil: isText ? 'networkidle2' : 'load',
-            timeout: isText ? NAV_TIMEOUT_MS : NAV_TIMEOUT_MS * 2,
-        });
-    } catch (error) {
-        logStep(`Navigation error: ${error.message}`);
-        throw new Error(`Browser navigation failed for ${url}: ${error.message}`);
-    }
-
-    if (!response) {
-        throw new Error(`page.goto returned no response for ${url}`);
-    }
-
-    const statusCode = response.status();
-    logStep(`Segment upstream status ${statusCode}`);
-
-    const body = await Promise.race([
-        response.buffer(),
-        new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('segment body read timeout')), 15000);
-        }),
-    ]);
-
-    logStep(`Read ${body.byteLength} bytes from upstream`);
-
-    return {
-        statusCode,
-        headers: response.headers(),
-        body,
-    };
+    return fetchSegmentFromBrowserPage(page, url, `session:${page.url()}`);
 }
 
 class BrowserSession {
@@ -241,6 +366,7 @@ async function createSessionPages(activeBrowser, embedUrl, referer, extraHeaders
     const cookieBase = embedUrl || referer;
     const cookies = parseCookieHeader(extraHeaders.cookie, cookieBase);
     const pages = [];
+    const warmupUrl = embedUrl || referer;
 
     for (let i = 0; i < PAGE_POOL_SIZE; i++) {
         const page = await activeBrowser.newPage();
@@ -251,11 +377,18 @@ async function createSessionPages(activeBrowser, embedUrl, referer, extraHeaders
             await page.setCookie(...cookies);
         }
 
+        // Must load embed origin so in-page segment fetch() sends the right Origin.
+        if (warmupUrl) {
+            await warmupPage(page, embedUrl, referer);
+        }
+
         pages.push(page);
     }
 
-    if (cookies.length > 0) {
-        logStep(`Applied ${cookies.length} cookie(s) for segment fetch (no embed navigation)`);
+    if (warmupUrl) {
+        logStep(`Warmed ${pages.length} session page(s) on embed origin for segment fetch`);
+    } else if (cookies.length > 0) {
+        logStep(`Applied ${cookies.length} cookie(s) for segment fetch (no embed URL to warm)`);
     }
 
     return pages;
@@ -388,7 +521,16 @@ export async function fetchViaBrowser(url, { embedUrl, referer, extraHeaders = {
         if (direct) {
             return direct;
         }
-        logStep('Direct segment fetch failed; falling back to browser tab');
+        logStep('Direct segment fetch failed; trying embed-page browser fetch');
+
+        // Prefer the already-open embed player tab (correct Origin + cookies).
+        if (embedAlive) {
+            try {
+                return await fetchSegmentFromBrowserPage(embedPage, url, `embed:${embedUrl}`);
+            } catch (embedError) {
+                logStep(`Embed-page segment fetch failed (${embedError.message}); falling back to session tab`);
+            }
+        }
     }
 
     const session = await getSession(embedUrl, referer, extraHeaders);

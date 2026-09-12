@@ -93,7 +93,7 @@ The scraper does **not** choose between them — only the URL shape matters: `GE
 
 - **Stack:** ESM, Express, **Puppeteer** (`proxy/browser-fetch.js`)
 - **Route:** `GET /proxy/:b64Payload` where payload is JSON `{ u, r, h?, e? }`
-- **Behavior:** Warms a headless Chromium tab on the embed page (`e`), then fetches manifests/segments via in-page `fetch()` (real browser TLS + cookies). Rewrites `#EXT-X-KEY` and segment lines to proxied URLs.
+- **Behavior:** Opens the embed page (`e`) in Chromium and keeps it warm. Manifests are captured from the live player (or via navigation). Segments try direct HTTP first, then **in-page `fetch()` on the embed tab** (correct Origin/cookies), then CDP `Network.loadNetworkResource` — never `page.goto(.ts)` (that aborts with `net::ERR_ABORTED` on strmd). Rewrites `#EXT-X-KEY` and segment lines to proxied URLs.
 - **Referer / headers:** Per-stream from feed payload (`r`, `h`)
 - **Embed page:** `e` in payload (re-scrape feed after this field was added)
 - **CORS:** Sets `Access-Control-Allow-Origin: *`
