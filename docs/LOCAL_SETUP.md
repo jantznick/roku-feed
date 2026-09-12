@@ -16,6 +16,7 @@ Scraper (npm start)  →  Backblaze B2  →  React Native app
 | **Scraper** | Repo root (`npm start`) | Scrapes onhockey.tv + Streamed.pk, uploads posters and `feed.json` to B2 |
 | **Backblaze B2** | Cloud | Public JSON feed + poster images |
 | **React Native** | `react-native-app/` | Fetches feed URL, league grid, HLS playback (`expo-video`) |
+| **Web viewer** | `web/` | Simple phone/laptop browser UI for feed + HLS (Docker) |
 | **Roku** | `roku-app/` | Same feed; grid → details → stream picker → playback |
 
 Neither client uses a `.env` file. The feed URL is hardcoded (React Native also allows changing it in **Settings**).
@@ -155,6 +156,20 @@ npx expo run:ios
 ```
 
 ---
+
+## Web viewer (phone / VPN testing)
+
+Minimal browser UI under `web/` — browse leagues and play proxied HLS on your phone while on the LAN/VPN.
+
+```bash
+cd web
+export FEED_URL='https://f004.backblazeb2.com/file/<bucket>/<SECRET_FEED_FILENAME>'
+export WEB_PORT=8091   # host port if 8080 is taken
+docker compose up -d --build
+# open http://<server-lan-ip>:$WEB_PORT
+```
+
+See **[web/README.md](../web/README.md)** for env vars (including optional proxy host rewrite).
 
 ## Roku channel
 
