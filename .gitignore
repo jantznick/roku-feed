@@ -8,7 +8,7 @@
 */node_modules
 latest-scrape-output.html
 live_streams.json
-package.json
+# Root package.json is tracked; do not ignore nested package.json (e.g. web/)
 data/gamestable.html
 data/soccer-leagues.log
 data/streamed-live-sample.json
