@@ -1,11 +1,11 @@
 # Roku Hockey Feed Generator
 
-This project scrapes `onhockey.tv` for NHL and NCAA Men's hockey games, generates poster images for each game, and creates a Roku-compatible JSON content feed.
+This project scrapes `onhockey.tv` for NHL, NHL Rookie Camp, NCAA Men's, and AHL hockey games, generates poster images for each game, and creates a Roku-compatible JSON content feed.
 
 ## Features
 
-- Scrapes NHL and NCAA Men's hockey games.
-- Filters for `vodcast` and `fluidtv` streams.
+- Scrapes NHL, NHL Rookie Camp, NCAA Men's, and AHL hockey games.
+- Filters for `fluidtv` and `brcove` (Brightcove) streams.
 - Generates dynamic poster images for each game.
 - Creates a Roku-compliant JSON feed.
 - Uploads the feed and images to Backblaze B2.

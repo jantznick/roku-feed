@@ -85,6 +85,7 @@ export function generateFeedShell() {
     lastUpdated: new Date().toISOString(),
     language: "en-US",
     "NHL": [],
+    "NHL Rookie Camp": [],
     "NCAA D1 Mens": []
   };
 }
