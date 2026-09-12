@@ -4,6 +4,7 @@ const META_KEYS = new Set(['providerName', 'lastUpdated', 'language', 'scriptDur
 
 const els = {
   reloadBtn: document.getElementById('reloadBtn'),
+  feedAge: document.getElementById('feedAge'),
   status: document.getElementById('status'),
   leagueNav: document.getElementById('leagueNav'),
   gameList: document.getElementById('gameList'),
@@ -22,10 +23,48 @@ let leagues = [];
 let activeLeague = '';
 /** @type {any} */
 let hls = null;
+/** @type {number | null} */
+let feedAgeTimer = null;
 
 function setStatus(message, isError = false) {
   els.status.textContent = message || '';
   els.status.classList.toggle('error', Boolean(isError));
+}
+
+function formatFeedAge(iso) {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return 'Feed updated: unknown time';
+
+  const seconds = Math.max(0, Math.floor((Date.now() - then) / 1000));
+  if (seconds < 60) return 'Feed updated just now';
+
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) {
+    return `Feed updated ${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) {
+    return `Feed updated ${hours} hour${hours === 1 ? '' : 's'} ago`;
+  }
+
+  const days = Math.floor(hours / 24);
+  return `Feed updated ${days} day${days === 1 ? '' : 's'} ago`;
+}
+
+function updateFeedAge() {
+  if (!feed?.lastUpdated) {
+    els.feedAge.textContent = feed ? 'Feed updated: unknown time' : 'Feed not loaded';
+    return;
+  }
+  els.feedAge.textContent = formatFeedAge(feed.lastUpdated);
+  els.feedAge.title = new Date(feed.lastUpdated).toLocaleString();
+}
+
+function startFeedAgeTimer() {
+  if (feedAgeTimer) clearInterval(feedAgeTimer);
+  updateFeedAge();
+  feedAgeTimer = window.setInterval(updateFeedAge, 30000);
 }
 
 function leagueEntries(data) {
@@ -34,6 +73,7 @@ function leagueEntries(data) {
 
 async function loadFeed() {
   setStatus('Loading feed…');
+  els.reloadBtn.disabled = true;
   els.gameList.innerHTML = '<p class="empty">Loading…</p>';
 
   try {
@@ -52,17 +92,17 @@ async function loadFeed() {
 
     renderLeagues();
     renderGames();
-    setStatus(
-      feed.lastUpdated
-        ? `Updated ${new Date(feed.lastUpdated).toLocaleString()} · ${leagues.length} leagues`
-        : `Loaded ${leagues.length} leagues`
-    );
+    startFeedAgeTimer();
+    setStatus(`${leagues.length} league${leagues.length === 1 ? '' : 's'} loaded`);
   } catch (error) {
     feed = null;
     leagues = [];
     els.leagueNav.innerHTML = '';
     els.gameList.innerHTML = '<p class="empty">Could not load feed.</p>';
+    updateFeedAge();
     setStatus(error.message || 'Failed to load feed. Is FEED_URL set?', true);
+  } finally {
+    els.reloadBtn.disabled = false;
   }
 }
 

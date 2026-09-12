@@ -2,7 +2,8 @@
 # From repo root:
 #   docker compose -f web/docker-compose.yml up -d --build
 #
-# Open http://<server-lan-ip>:8080 on your phone (VPN).
+# Open http://<server-lan-ip>:${WEB_PORT:-8080} on your phone (VPN).
+# Change host port with WEB_PORT=8091 if 8080 is already in use.
 
 services:
   web:
