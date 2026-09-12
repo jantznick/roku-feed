@@ -98,7 +98,7 @@ export async function scrapeMainPage(browser) {
         const games = await page.evaluate((extractStreamLinksStr) => {
             const evaledExtractStreamLinks = new Function(`return ${extractStreamLinksStr}`)();
             const scrapedGames = [];
-            const leaguesToScrape = ["NHL", "NCAA D1 Men", "AHL"];
+            const leaguesToScrape = ["NHL", "NHL Rookie Camp", "NCAA D1 Men", "AHL"];
 
             leaguesToScrape.forEach(leagueName => {
                 const allTBodies = Array.from(document.querySelectorAll("#content > #gametable > tbody"));
@@ -147,12 +147,23 @@ export async function scrapeMainPage(browser) {
                     const streams = evaledExtractStreamLinks(gameLinksDiv);
 
                     if (streams.length > 0) {
+                        let league;
+                        if (leagueName.includes('NCAA')) {
+                            league = 'NCAA';
+                        } else if (leagueName.includes('AHL')) {
+                            league = 'AHL';
+                        } else if (leagueName.includes('Rookie Camp')) {
+                            league = 'NHL Rookie Camp';
+                        } else {
+                            league = 'NHL';
+                        }
+
                         scrapedGames.push({
                             id: gameId,
                             name: gameName,
                             time,
                             releaseDate: releaseDateObj.toISOString(),
-                            league: leagueName.includes('NCAA') ? 'NCAA' : leagueName.includes('AHL') ? 'AHL' : 'NHL',
+                            league,
                             teams: baseTeams,
                             streamLinks: streams
                         });

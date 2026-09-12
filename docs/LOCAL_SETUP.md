@@ -109,7 +109,7 @@ On startup the scraper **downloads the previous feed from B2** (when configured)
 
 ### Sports scope
 
-- **onhockey.tv:** NHL + NCAA D1 Men (optional; may return 0 if the site layout changed)
+- **onhockey.tv:** NHL, NHL Rookie Camp, NCAA D1 Men, AHL (optional; may return 0 if the site layout changed)
 - **Streamed.pk:** hockey, baseball, basketball, american-football, motor-sports
 - **24/7 channels:** USA networks (NHL Network, MLB TV, NBA TV, ESPN/NFL, etc.)
 

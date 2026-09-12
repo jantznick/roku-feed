@@ -239,6 +239,8 @@ export async function generateImages(browser, games) {
         let leagueLogoB64 = null;
         switch (game.league) {
             case 'NHL':
+            case 'NHL Rookie Camp':
+            case 'AHL':
                 leagueLogoB64 = nhlLogoB64;
                 break;
             case 'NCAA':
