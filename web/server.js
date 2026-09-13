@@ -227,7 +227,14 @@ app.use(express.static(path.join(__dirname, 'public'), {
   },
 }));
 
-app.get('*', (_req, res) => {
+// SPA fallback — never swallow /api or /hls (those must hit the handlers above,
+// or return a clear 404 instead of index.html, which breaks HLS debugging).
+app.get('*', (req, res) => {
+  if (req.path === '/api' || req.path.startsWith('/api/') ||
+      req.path === '/hls' || req.path.startsWith('/hls/')) {
+    res.status(404).type('text/plain').send(`No handler for ${req.path}`);
+    return;
+  }
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 

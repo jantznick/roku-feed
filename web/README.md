@@ -35,6 +35,29 @@ With `HLS_PROXY_UPSTREAM` set:
 
 Without `HLS_PROXY_UPSTREAM`, `/hls` cannot proxy anywhere — HTTPS pages will still block plain `http://` LAN URLs.
 
+## Reverse proxy (HTTPS)
+
+If you terminate TLS in Caddy/nginx/Traefik in front of this container, **forward the whole host** (or at least `/`, `/api`, and `/hls`) to the container.
+
+`/hls` must reach Node. If your proxy only sends `/api` upstream and uses `try_files` → `index.html` for everything else, the browser will get HTML for `/hls/proxy/…` and playback will fail.
+
+**Quick check** (should NOT be `text/html`):
+
+```bash
+curl -sI https://your-host/api/config
+curl -sI "https://your-host/hls/proxy/test"
+# Expect: application/json for config; 502/503 text/plain (or m3u8) for /hls — never text/html
+docker exec roku-feed-web printenv HLS_PROXY_UPSTREAM
+```
+
+Example Caddy site block:
+
+```caddy
+sports.example.com {
+  reverse_proxy 127.0.0.1:8090
+}
+```
+
 ## Local without Docker
 
 ```bash
