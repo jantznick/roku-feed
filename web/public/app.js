@@ -25,6 +25,78 @@ let activeLeague = '';
 let hls = null;
 /** @type {number | null} */
 let feedAgeTimer = null;
+/** @type {{ hlsProxyUpstream: string | null, hlsMount: string }} */
+let appConfig = {
+  hlsProxyUpstream: null,
+  hlsMount: '/hls',
+};
+
+/**
+ * Rewrite LAN proxy URLs to same-origin /hls so HTTPS pages are not blocked by Mixed Content.
+ * Works even when /api/feed still returns http://192.168.x.x URLs.
+ */
+function rewriteToHls(url) {
+  if (!url || typeof url !== 'string') return url;
+
+  const mount = appConfig.hlsMount || '/hls';
+  const upstream = appConfig.hlsProxyUpstream;
+
+  if (upstream && url.includes(upstream)) {
+    return url.split(upstream).join(mount);
+  }
+
+  if (upstream) {
+    try {
+      const host = new URL(upstream).host;
+      const escaped = host.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const rewritten = url.replace(new RegExp(`https?://${escaped}`, 'gi'), mount);
+      if (rewritten !== url) return rewritten;
+    } catch {
+      // ignore
+    }
+  }
+
+  // Fallback: foreign-origin URLs whose path is the LAN proxy (/proxy...)
+  try {
+    const parsed = new URL(url, window.location.href);
+    if (parsed.pathname.startsWith('/proxy') && parsed.origin !== window.location.origin) {
+      return `${mount}${parsed.pathname}${parsed.search}`;
+    }
+  } catch {
+    // ignore
+  }
+
+  return url;
+}
+
+function rewriteFeedStreamUrls(data) {
+  for (const value of Object.values(data || {})) {
+    if (!Array.isArray(value)) continue;
+    for (const item of value) {
+      const videos = item?.content?.videos;
+      if (!Array.isArray(videos)) continue;
+      for (const video of videos) {
+        if (typeof video.url === 'string') {
+          video.url = rewriteToHls(video.url);
+        }
+      }
+    }
+  }
+}
+
+async function loadConfig() {
+  try {
+    const res = await fetch('/api/config');
+    if (!res.ok) return;
+    const payload = await res.json();
+    appConfig = {
+      hlsProxyUpstream: payload.hlsProxyUpstream || null,
+      hlsMount: payload.hlsMount || '/hls',
+    };
+  } catch {
+    // keep defaults — rewriteToHls still maps /proxy paths on foreign hosts
+  }
+}
 
 function setStatus(message, isError = false) {
   els.status.textContent = message || '';
@@ -77,7 +149,6 @@ async function loadFeed() {
   els.gameList.innerHTML = '<p class="empty">Loading…</p>';
 
   try {
-    // Uses FEED_URL from the server env — no client-side URL entry.
     const res = await fetch('/api/feed');
     const payload = await res.json();
     if (!res.ok) {
@@ -85,6 +156,7 @@ async function loadFeed() {
     }
 
     feed = payload;
+    rewriteFeedStreamUrls(feed);
     leagues = leagueEntries(feed);
 
     const savedLeague = localStorage.getItem(LEAGUE_STORAGE_KEY);
@@ -186,6 +258,24 @@ function destroyHls() {
   }
 }
 
+function createHlsPlayer() {
+  const BaseLoader = window.Hls.DefaultConfig.loader;
+  class RewritingLoader extends BaseLoader {
+    load(context, config, callbacks) {
+      if (context?.url) {
+        context.url = rewriteToHls(context.url);
+      }
+      super.load(context, config, callbacks);
+    }
+  }
+
+  return new window.Hls({
+    enableWorker: true,
+    lowLatencyMode: true,
+    loader: RewritingLoader,
+  });
+}
+
 function playUrl(url, label = '') {
   destroyHls();
   const video = els.video;
@@ -193,20 +283,18 @@ function playUrl(url, label = '') {
   video.removeAttribute('src');
   video.load();
 
+  const playableUrl = rewriteToHls(url);
   setStatus(label ? `Playing ${label}` : 'Playing…');
 
   if (video.canPlayType('application/vnd.apple.mpegurl')) {
-    video.src = url;
+    video.src = playableUrl;
     video.play().catch(() => {});
     return;
   }
 
   if (window.Hls?.isSupported()) {
-    hls = new window.Hls({
-      enableWorker: true,
-      lowLatencyMode: true,
-    });
-    hls.loadSource(url);
+    hls = createHlsPlayer();
+    hls.loadSource(playableUrl);
     hls.attachMedia(video);
     hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
       video.play().catch(() => {});
@@ -248,4 +336,7 @@ els.reloadBtn.addEventListener('click', () => {
 
 els.closePlayerBtn.addEventListener('click', closePlayer);
 
-loadFeed();
+(async () => {
+  await loadConfig();
+  await loadFeed();
+})();
