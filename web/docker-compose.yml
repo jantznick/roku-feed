@@ -22,4 +22,8 @@ services:
       # Example: PROXY_REWRITE_FROM=192.168.1.50:8787  PROXY_REWRITE_TO=192.168.1.50:8787
       PROXY_REWRITE_FROM: "${PROXY_REWRITE_FROM:-}"
       PROXY_REWRITE_TO: "${PROXY_REWRITE_TO:-}"
+      # Required when the viewer is served over HTTPS (e.g. https://sports.jantz.me).
+      # Proxies HLS via same-origin /hls so the browser is not blocked by Mixed Content.
+      # Example: HLS_PROXY_UPSTREAM=http://192.168.1.50:8787
+      HLS_PROXY_UPSTREAM: "${HLS_PROXY_UPSTREAM:-}"
     restart: unless-stopped
