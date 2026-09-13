@@ -11,8 +11,15 @@ const DEFAULT_FEED_URL = process.env.FEED_URL || '';
 const PROXY_REWRITE_FROM = process.env.PROXY_REWRITE_FROM || '';
 const PROXY_REWRITE_TO = process.env.PROXY_REWRITE_TO || '';
 /** LAN HLS proxy origin, e.g. http://192.168.1.50:8787 — required for HTTPS pages (mixed content). */
-const HLS_PROXY_UPSTREAM = (process.env.HLS_PROXY_UPSTREAM || '').replace(/\/$/, '');
+const HLS_PROXY_UPSTREAM = normalizeUpstream(process.env.HLS_PROXY_UPSTREAM || '');
 const HLS_MOUNT = '/hls';
+
+function normalizeUpstream(raw) {
+  const value = String(raw || '').trim().replace(/\/$/, '');
+  if (!value) return '';
+  if (/^https?:\/\//i.test(value)) return value;
+  return `http://${value}`;
+}
 
 app.disable('x-powered-by');
 
@@ -26,7 +33,8 @@ app.get('/api/config', (_req, res) => {
     proxyRewriteFrom: PROXY_REWRITE_FROM || null,
     proxyRewriteTo: PROXY_REWRITE_TO || null,
     hlsProxyUpstream: HLS_PROXY_UPSTREAM || null,
-    hlsMount: HLS_PROXY_UPSTREAM ? HLS_MOUNT : null,
+    // Always advertise the mount so the client can rewrite LAN URLs even if feed rewrite failed.
+    hlsMount: HLS_MOUNT,
   });
 });
 
@@ -77,7 +85,7 @@ app.get('/api/feed', async (_req, res) => {
       rewriteProxyHosts(feed, PROXY_REWRITE_FROM, PROXY_REWRITE_TO);
     }
     if (HLS_PROXY_UPSTREAM) {
-      rewriteProxyHosts(feed, HLS_PROXY_UPSTREAM, HLS_MOUNT);
+      rewriteFeedStreamUrls(feed);
     }
 
     res.setHeader('Cache-Control', 'no-store');
@@ -102,9 +110,32 @@ function rewriteProxyHosts(feed, fromHost, toHost) {
   }
 }
 
+function rewriteFeedStreamUrls(feed) {
+  for (const value of Object.values(feed)) {
+    if (!Array.isArray(value)) continue;
+    for (const item of value) {
+      const videos = item?.content?.videos;
+      if (!Array.isArray(videos)) continue;
+      for (const video of videos) {
+        if (typeof video.url === 'string') {
+          video.url = rewriteHlsUrlsInText(video.url);
+        }
+      }
+    }
+  }
+}
+
 function rewriteHlsUrlsInText(text) {
   if (!HLS_PROXY_UPSTREAM || !text) return text;
-  return text.split(HLS_PROXY_UPSTREAM).join(HLS_MOUNT);
+  let out = text.split(HLS_PROXY_UPSTREAM).join(HLS_MOUNT);
+  try {
+    const host = new URL(HLS_PROXY_UPSTREAM).host;
+    const escaped = host.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    out = out.replace(new RegExp(`https?://${escaped}`, 'gi'), HLS_MOUNT);
+  } catch {
+    // ignore invalid upstream
+  }
+  return out;
 }
 
 function isManifestResponse(contentType, targetUrl) {

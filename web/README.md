@@ -29,7 +29,11 @@ Open `http://<server-lan-ip>:$WEB_PORT` (default **8080**), or your reverse-prox
 
 The browser never fetches the feed from S3/B2 directly (CORS). The container proxies `/api/feed`.
 
-With `HLS_PROXY_UPSTREAM` set, stream URLs become `/hls/proxy…` on the web app (HTTPS-safe). Without it, the browser talks straight to the LAN proxy — fine on plain HTTP LAN pages, **blocked as Mixed Content** on `https://` sites (VLC still works because it ignores that rule).
+With `HLS_PROXY_UPSTREAM` set:
+- Server can rewrite feed/m3u8 URLs to `/hls…` and proxies `/hls` → the LAN proxy
+- The **browser also rewrites** any leftover `http://192.168…/proxy…` URLs to `/hls…` before hls.js loads them (and again for each segment request)
+
+Without `HLS_PROXY_UPSTREAM`, `/hls` cannot proxy anywhere — HTTPS pages will still block plain `http://` LAN URLs.
 
 ## Local without Docker
 
