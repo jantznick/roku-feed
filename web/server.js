@@ -1,5 +1,7 @@
 import express from 'express';
 import path from 'path';
+import { Readable } from 'stream';
+import { pipeline } from 'stream/promises';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -8,6 +10,9 @@ const PORT = Number.parseInt(process.env.PORT || '8080', 10);
 const DEFAULT_FEED_URL = process.env.FEED_URL || '';
 const PROXY_REWRITE_FROM = process.env.PROXY_REWRITE_FROM || '';
 const PROXY_REWRITE_TO = process.env.PROXY_REWRITE_TO || '';
+/** LAN HLS proxy origin, e.g. http://192.168.1.50:8787 — required for HTTPS pages (mixed content). */
+const HLS_PROXY_UPSTREAM = (process.env.HLS_PROXY_UPSTREAM || '').replace(/\/$/, '');
+const HLS_MOUNT = '/hls';
 
 app.disable('x-powered-by');
 
@@ -20,6 +25,8 @@ app.get('/api/config', (_req, res) => {
     feedConfigured: Boolean(DEFAULT_FEED_URL),
     proxyRewriteFrom: PROXY_REWRITE_FROM || null,
     proxyRewriteTo: PROXY_REWRITE_TO || null,
+    hlsProxyUpstream: HLS_PROXY_UPSTREAM || null,
+    hlsMount: HLS_PROXY_UPSTREAM ? HLS_MOUNT : null,
   });
 });
 
@@ -69,6 +76,9 @@ app.get('/api/feed', async (_req, res) => {
     if (PROXY_REWRITE_FROM && PROXY_REWRITE_TO) {
       rewriteProxyHosts(feed, PROXY_REWRITE_FROM, PROXY_REWRITE_TO);
     }
+    if (HLS_PROXY_UPSTREAM) {
+      rewriteProxyHosts(feed, HLS_PROXY_UPSTREAM, HLS_MOUNT);
+    }
 
     res.setHeader('Cache-Control', 'no-store');
     res.json(feed);
@@ -92,6 +102,91 @@ function rewriteProxyHosts(feed, fromHost, toHost) {
   }
 }
 
+function rewriteHlsUrlsInText(text) {
+  if (!HLS_PROXY_UPSTREAM || !text) return text;
+  return text.split(HLS_PROXY_UPSTREAM).join(HLS_MOUNT);
+}
+
+function isManifestResponse(contentType, targetUrl) {
+  return /mpegurl|m3u8/i.test(contentType || '') || /\.m3u8(\?|$)/i.test(targetUrl);
+}
+
+/**
+ * Same-origin HTTPS front for the LAN HLS proxy.
+ * Prevents Mixed Content when the viewer is served over https://.
+ */
+app.use('/hls', async (req, res) => {
+  if (!HLS_PROXY_UPSTREAM) {
+    res.status(503).type('text/plain').send('HLS_PROXY_UPSTREAM is not configured');
+    return;
+  }
+
+  const pathWithQuery = req.originalUrl.slice(HLS_MOUNT.length) || '/';
+  const targetUrl = HLS_PROXY_UPSTREAM + pathWithQuery;
+
+  const headers = {
+    Accept: req.headers.accept || '*/*',
+    'User-Agent': req.headers['user-agent'] || 'roku-feed-web/1',
+  };
+  if (req.headers.range) headers.Range = req.headers.range;
+
+  let upstream;
+  try {
+    upstream = await fetch(targetUrl, {
+      method: req.method === 'HEAD' ? 'HEAD' : 'GET',
+      headers,
+      redirect: 'follow',
+      signal: AbortSignal.timeout(120000),
+    });
+  } catch (error) {
+    res.status(502).type('text/plain').send(error.message || 'HLS upstream fetch failed');
+    return;
+  }
+
+  const contentType = upstream.headers.get('content-type') || '';
+  res.status(upstream.status);
+
+  const passHeaders = ['content-type', 'accept-ranges', 'content-range', 'cache-control'];
+  for (const name of passHeaders) {
+    const value = upstream.headers.get(name);
+    if (value) res.setHeader(name, value);
+  }
+  res.setHeader('Access-Control-Allow-Origin', '*');
+
+  if (req.method === 'HEAD') {
+    const cl = upstream.headers.get('content-length');
+    if (cl) res.setHeader('Content-Length', cl);
+    res.end();
+    return;
+  }
+
+  if (isManifestResponse(contentType, targetUrl)) {
+    const body = rewriteHlsUrlsInText(await upstream.text());
+    res.setHeader('Content-Type', contentType || 'application/vnd.apple.mpegurl');
+    res.setHeader('Cache-Control', 'no-store');
+    res.send(body);
+    return;
+  }
+
+  const contentLength = upstream.headers.get('content-length');
+  if (contentLength) res.setHeader('Content-Length', contentLength);
+
+  if (!upstream.body) {
+    res.end();
+    return;
+  }
+
+  try {
+    await pipeline(Readable.fromWeb(upstream.body), res);
+  } catch (error) {
+    if (!res.headersSent) {
+      res.status(502).type('text/plain').send(error.message || 'HLS proxy stream failed');
+    } else {
+      res.destroy(error);
+    }
+  }
+});
+
 app.use(express.static(path.join(__dirname, 'public'), {
   extensions: ['html'],
   setHeaders(res, filePath) {
@@ -109,5 +204,10 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`Web stream viewer listening on http://0.0.0.0:${PORT}`);
   if (DEFAULT_FEED_URL) {
     console.log(`Default FEED_URL: ${DEFAULT_FEED_URL}`);
+  }
+  if (HLS_PROXY_UPSTREAM) {
+    console.log(`HLS proxy: ${HLS_MOUNT} → ${HLS_PROXY_UPSTREAM}`);
+  } else {
+    console.log('HLS_PROXY_UPSTREAM unset — HTTPS pages will block http:// LAN stream URLs (mixed content)');
   }
 });
