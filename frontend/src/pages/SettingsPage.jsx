@@ -136,9 +136,9 @@ export default function SettingsPage() {
             />
           </label>
           <p className="text-xs text-slate-500">
-            Must be an http(s) URL ending in <code className="rounded bg-slate-100 px-1">.json</code>{" "}
-            or otherwise recognized as a feed URL. Leave empty and save, or use Reset, to use the
-            default.
+            Must be an absolute <code className="rounded bg-slate-100 px-1">http://</code> or{" "}
+            <code className="rounded bg-slate-100 px-1">https://</code> URL. Leave empty and save, or
+            use Reset, to use the default.
           </p>
           {defaultFeedUrl ? (
             <p className="text-xs text-slate-500">
