@@ -2,6 +2,20 @@
 
 This project scrapes `onhockey.tv` for NHL, NHL Rookie Camp, NCAA Men's, and AHL hockey games, generates poster images for each game, and creates a Roku-compatible JSON content feed.
 
+## Apps in this repo
+
+| Path | Role |
+|------|------|
+| `src/` | Scraper + feed generator → B2 |
+| `roku-app/` | Roku channel (default feed + optional custom URL) |
+| `backend/` | Auth + per-user feed URL API (Express / Prisma / Postgres) |
+| `frontend/` | Vite React UI for login + feed URL settings |
+| `web/` | Browser HLS feed viewer |
+| `react-native-app/` | Expo mobile client |
+| `proxy/` | HLS proxy |
+
+See **[backend/README.md](backend/README.md)** and **[frontend/README.md](frontend/README.md)** for the configurable-feed API and settings UI.
+
 ## Features
 
 - Scrapes NHL, NHL Rookie Camp, NCAA Men's, and AHL hockey games.

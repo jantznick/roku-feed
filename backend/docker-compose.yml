@@ -1,0 +1,44 @@
+# Roku Feed API + PostgreSQL.
+#
+# From this directory (backend):
+#   docker compose up --build
+#
+# One-off Prisma:
+#   docker compose run --rm api npx prisma generate
+#   docker compose run --rm api npx prisma migrate deploy
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: rokufeed
+      POSTGRES_PASSWORD: rokufeed
+      POSTGRES_DB: roku_feed
+    ports:
+      - "5432:5432"
+    volumes:
+      - roku_feed_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rokufeed -d roku_feed"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3001"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql://rokufeed:rokufeed@db:5432/roku_feed?schema=public
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  roku_feed_pg:

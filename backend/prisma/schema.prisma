@@ -1,0 +1,48 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// App user: magic-link / password auth + preferred content feed URL.
+model User {
+  id            String      @id @default(cuid())
+  email         String      @unique
+  passwordHash  String?
+  emailVerified Boolean     @default(false)
+  /// Custom Roku/content feed URL. Null/empty means use DEFAULT_FEED_URL.
+  feedUrl       String?
+  authTokens    AuthToken[]
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+}
+
+/// express-session / connect-pg-simple store
+model Session {
+  sid    String   @id @db.VarChar(255)
+  sess   Json     @db.JsonB
+  expire DateTime @db.Timestamp(6)
+
+  @@index([expire])
+  @@map("session")
+}
+
+/// One-time auth tokens (magic link, magic code, password reset, email verification).
+model AuthToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String    @unique @db.VarChar(500)
+  /// magic_link | magic_code | password_reset | email_verification
+  tokenType String    @db.VarChar(32)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([token])
+  @@map("auth_tokens")
+}
