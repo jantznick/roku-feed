@@ -52,7 +52,9 @@ Do not start Compose on the shared laptop if that is reserved for other work; ru
 | GET | `/auth/verify-email?token=` | Email verification link |
 | POST | `/auth/verify-email/resend` | Auth required |
 
-Magic-link emails point at `{APP_URL}/auth/verify?token=...` (frontend route).
+Magic-link emails point at `{APP_URL}/auth/verify?token=...` (Vite frontend route).
+
+Successful auth responses also include `accessToken` (30-day bearer) for Expo / native clients. Cookie sessions remain the primary auth for the web app.
 
 ## Device pairing (Roku ↔ web account)
 

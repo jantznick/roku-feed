@@ -1,6 +1,8 @@
-# Feed Settings Frontend
+# Feed Settings Frontend (Web)
 
-Vite + React 19 + Tailwind CSS v4 app for magic-link login and configuring a custom Roku feed URL.
+Vite + React 19 + Tailwind CSS v4 **browser** app for magic-link login, feed URL settings, and linking a Roku.
+
+Mobile / app-store clients live in `/react-native-app` (Expo). This package is web-only.
 
 ## Setup
 

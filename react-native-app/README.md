@@ -1,48 +1,43 @@
-# Roku Feed Mobile App
+# We Like Sports (Expo)
 
-A React Native iOS app built with Expo for streaming sports content.
+React Native / Expo app for **iOS and Android** (app-store path). Streaming player plus account settings that sync feed URLs with the backend and Roku.
+
+The **browser** settings UI stays in `/frontend` (Vite). Do not use Expo for web.
+
+## Features
+
+- Browse the JSON content feed and play HLS streams
+- Magic-link / code login (bearer `accessToken` stored in AsyncStorage)
+- Account feed URL (`GET`/`PUT /user/settings`)
+- Claim a Roku pairing code (`POST /device/pair/claim`)
 
 ## Setup
 
-### Install Dependencies
-
-First, update React to fix version conflicts:
-
 ```bash
-npm install react@19.2.0 react-dom@19.2.0
-```
-
-Then install the remaining dependencies:
-
-```bash
-npm install expo-video fuse.js
-```
-
-After installing packages, rebuild the app to apply native changes:
-
-```bash
-npx expo prebuild --clean
-npx expo run:ios
-```
-
-Or if using development build:
-
-```bash
-npx expo start --clear
-```
-
-### Development
-
-```bash
+cd react-native-app
+cp .env.example .env
+npm install
 npm start
 ```
 
-Then press `i` to open in iOS simulator, or scan the QR code with the Expo Go app on your device.
+Set `EXPO_PUBLIC_API_BASE_URL` to your backend (default `http://localhost:3001`). On a physical device, use your LAN IP.
 
-## Tech Stack
+Then press `i` / `a` for simulator, or scan with Expo Go / a dev client.
 
-- Expo SDK 52
-- Expo Router (file-based navigation)
-- NativeWind v4 (Tailwind CSS for React Native)
-- TypeScript
+## Scripts
 
+| Script | Purpose |
+|--------|---------|
+| `npm start` | Expo dev server (native) |
+| `npm run ios` | Open iOS |
+| `npm run android` | Open Android |
+
+## Auth note
+
+Native clients use `Authorization: Bearer <accessToken>` from login/verify responses. The Vite web app continues to use cookie sessions (`feed.sid`).
+
+## Related
+
+- Web settings: `/frontend`
+- API: `/backend`
+- Roku channel: `/roku-app`

@@ -7,14 +7,15 @@ This project scrapes `onhockey.tv` for NHL, NHL Rookie Camp, NCAA Men's, and AHL
 | Path | Role |
 |------|------|
 | `src/` | Scraper + feed generator → B2 |
-| `roku-app/` | Roku channel (default feed + optional custom URL) |
-| `backend/` | Auth + per-user feed URL API (Express / Prisma / Postgres) |
-| `frontend/` | Vite React UI for login + feed URL settings |
+| `roku-app/` | Roku channel (default feed + account-synced URL) |
+| `backend/` | Auth + per-user feed URL + device pairing API |
+| `frontend/` | **Web** settings UI (Vite + React) — login, feed URL, link Roku |
+| `react-native-app/` | **Mobile** Expo app (iOS / Android) — player + same account APIs |
 | `web/` | Browser HLS feed viewer |
-| `react-native-app/` | Expo mobile client |
 | `proxy/` | HLS proxy |
 
-See **[backend/README.md](backend/README.md)** and **[frontend/README.md](frontend/README.md)** for the configurable-feed API and settings UI.
+See **[backend/README.md](backend/README.md)**, **[frontend/README.md](frontend/README.md)**, and **[react-native-app/README.md](react-native-app/README.md)**.
+
 
 ## Features
 
