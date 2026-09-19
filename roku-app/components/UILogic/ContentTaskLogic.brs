@@ -4,6 +4,7 @@
 
 sub RunContentTask()
     m.contentTask = CreateObject("roSGNode", "MainLoaderTask") ' create task for feed retrieving
+    m.contentTask.feedUrl = GetFeedUrl()
     ' observe content so we can know when feed content will be parsed
     m.contentTask.ObserveField("content", "OnMainContentLoaded")
     m.contentTask.control = "run" ' GetContent(see MainLoaderTask.brs) method is executed
