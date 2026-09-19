@@ -3,6 +3,7 @@
 const { getPrisma } = require("../lib/prisma");
 const { FRONTEND_URL, DEFAULT_FEED_URL } = require("../config");
 const { effectiveFeedUrl } = require("../utils/feed-url");
+const { findValidAuthToken } = require("../utils/auth-tokens");
 const { logInfo } = require("../utils/logger");
 
 const allowedOrigins = String(FRONTEND_URL || "")
@@ -32,6 +33,12 @@ function checkOriginCsrf(req, res) {
   return true;
 }
 
+function getBearerToken(req) {
+  const header = String(req.headers.authorization || "");
+  const match = header.match(/^Bearer\s+(.+)$/i);
+  return match ? match[1].trim() : "";
+}
+
 function publicUser(user) {
   if (!user) {
     return null;
@@ -46,7 +53,37 @@ function publicUser(user) {
   };
 }
 
+async function loadUserFromBearer(req) {
+  const token = getBearerToken(req);
+  if (!token) {
+    return null;
+  }
+  const row = await findValidAuthToken(token, "session");
+  if (!row?.user) {
+    return null;
+  }
+  req.authToken = row;
+  req.authVia = "bearer";
+  return row.user;
+}
+
 async function loadSessionUser(req, res) {
+  const prisma = getPrisma();
+  if (!prisma) {
+    res.status(503).json({
+      ok: false,
+      error: "Database is not configured",
+      code: "database_unavailable"
+    });
+    return null;
+  }
+
+  // Prefer bearer (Expo / native); skip Origin CSRF for token auth.
+  const bearerUser = await loadUserFromBearer(req);
+  if (bearerUser) {
+    return bearerUser;
+  }
+
   if (!req.session?.userId) {
     res.status(401).json({
       ok: false,
@@ -58,15 +95,7 @@ async function loadSessionUser(req, res) {
   if (!checkOriginCsrf(req, res)) {
     return null;
   }
-  const prisma = getPrisma();
-  if (!prisma) {
-    res.status(503).json({
-      ok: false,
-      error: "Database is not configured",
-      code: "database_unavailable"
-    });
-    return null;
-  }
+
   const user = await prisma.user.findUnique({
     where: { id: req.session.userId }
   });
@@ -78,11 +107,12 @@ async function loadSessionUser(req, res) {
     });
     return null;
   }
+  req.authVia = "cookie";
   return user;
 }
 
 /**
- * Session required. Attaches req.user. Does not require emailVerified.
+ * Session or bearer required. Attaches req.user. Does not require emailVerified.
  */
 async function requireAuthOnly(req, res, next) {
   try {
@@ -98,7 +128,7 @@ async function requireAuthOnly(req, res, next) {
 }
 
 /**
- * Session + verified email. Attaches req.user.
+ * Session/bearer + verified email. Attaches req.user.
  */
 async function requireAuth(req, res, next) {
   try {
@@ -136,5 +166,6 @@ module.exports = {
   publicUser,
   requireAuthOnly,
   requireAuth,
-  saveSession
+  saveSession,
+  getBearerToken
 };

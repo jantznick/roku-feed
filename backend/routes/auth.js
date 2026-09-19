@@ -7,10 +7,12 @@ const { APP_URL } = require("../config");
 const { normalizeEmail } = require("../utils/email-normalize");
 const {
   createAuthToken,
+  createSessionAccessToken,
   findValidAuthToken,
   generateMagicCode,
   hashMagicCode,
-  markAuthTokenUsed
+  markAuthTokenUsed,
+  revokeSessionAccessToken
 } = require("../utils/auth-tokens");
 const {
   sendMagicLinkEmail,
@@ -20,7 +22,8 @@ const {
 const {
   publicUser,
   requireAuthOnly,
-  saveSession
+  saveSession,
+  getBearerToken
 } = require("../middleware/auth");
 const { logInfo } = require("../utils/logger");
 
@@ -32,6 +35,20 @@ const PASSWORD_MAX = 128;
 const MAGIC_CODE_MAX_ATTEMPTS = 5;
 const MAGIC_CODE_ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
 const magicCodeAttempts = new Map();
+
+async function issueAccessToken(userId) {
+  const row = await createSessionAccessToken(userId);
+  return row.token;
+}
+
+async function respondWithAuth(res, user, status = 200) {
+  const accessToken = await issueAccessToken(user.id);
+  return res.status(status).json({
+    ok: true,
+    user: publicUser(user),
+    accessToken
+  });
+}
 
 function magicCodeAttemptKey(req, email) {
   return `${req.ip || "unknown"}:${email}`;
@@ -114,11 +131,7 @@ router.post("/register", async (req, res) => {
     req.session.userId = user.id;
     await saveSession(req);
 
-    return res.status(201).json({
-      ok: true,
-      user: publicUser(user),
-      message: "Registration successful. Please check your email to verify your account."
-    });
+    return respondWithAuth(res, user, 201);
   } catch (error) {
     logInfo("Register failed", { error: error.message });
     return res.status(500).json({ ok: false, error: "Registration failed" });
@@ -156,14 +169,27 @@ router.post("/login", async (req, res) => {
     req.session.userId = user.id;
     await saveSession(req);
 
-    return res.json({ ok: true, user: publicUser(user) });
+    return respondWithAuth(res, user);
   } catch (error) {
     logInfo("Login failed", { error: error.message });
     return res.status(500).json({ ok: false, error: "Login failed" });
   }
 });
 
-router.post("/logout", (req, res) => {
+router.post("/logout", async (req, res) => {
+  try {
+    const bearer = getBearerToken(req);
+    if (bearer) {
+      await revokeSessionAccessToken(bearer);
+    }
+  } catch {
+    // ignore revoke errors
+  }
+
+  if (!req.session) {
+    return res.json({ ok: true });
+  }
+
   req.session.destroy((err) => {
     if (err) {
       return res.status(500).json({ ok: false, error: "Failed to logout" });
@@ -275,7 +301,7 @@ router.get("/magic-link/verify", async (req, res) => {
     req.session.userId = user.id;
     await saveSession(req);
 
-    return res.json({ ok: true, user: publicUser(user) });
+    return respondWithAuth(res, user);
   } catch (error) {
     logInfo("Magic link verify failed", { error: error.message });
     return res.status(500).json({ ok: false, error: "Verification failed" });
@@ -332,7 +358,7 @@ router.post("/magic-code/verify", async (req, res) => {
     req.session.userId = user.id;
     await saveSession(req);
 
-    return res.json({ ok: true, user: publicUser(user) });
+    return respondWithAuth(res, user);
   } catch (error) {
     logInfo("Magic code verify failed", { error: error.message });
     return res.status(500).json({ ok: false, error: "Verification failed" });
@@ -379,7 +405,7 @@ router.get("/verify-email", async (req, res) => {
     req.session.userId = user.id;
     await saveSession(req);
 
-    return res.json({ ok: true, user: publicUser(user) });
+    return respondWithAuth(res, user);
   } catch (error) {
     logInfo("Verify email failed", { error: error.message });
     return res.status(500).json({ ok: false, error: "Verification failed" });

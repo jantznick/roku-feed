@@ -61,7 +61,7 @@ model AuthToken {
   userId    String
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   token     String    @unique @db.VarChar(500)
-  /// magic_link | magic_code | password_reset | email_verification
+  /// magic_link | magic_code | password_reset | email_verification | session
   tokenType String    @db.VarChar(32)
   expiresAt DateTime
   usedAt    DateTime?

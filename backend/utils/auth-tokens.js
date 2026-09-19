@@ -7,7 +7,9 @@ const TTL = {
   magic_link: 15 * 60 * 1000,
   magic_code: 15 * 60 * 1000,
   password_reset: 60 * 60 * 1000,
-  email_verification: 24 * 60 * 60 * 1000
+  email_verification: 24 * 60 * 60 * 1000,
+  /// Long-lived bearer for Expo / mobile / API clients
+  session: 30 * 24 * 60 * 60 * 1000
 };
 
 function generateToken() {
@@ -64,13 +66,28 @@ async function findValidAuthToken(token, tokenType) {
   if (tokenType && row.tokenType !== tokenType) {
     return null;
   }
-  if (row.usedAt) {
+  if (row.usedAt && tokenType !== "session") {
     return null;
   }
   if (row.expiresAt < new Date()) {
     return null;
   }
   return row;
+}
+
+async function createSessionAccessToken(userId) {
+  return createAuthToken(userId, "session");
+}
+
+async function revokeSessionAccessToken(token) {
+  const prisma = getPrisma();
+  if (!prisma || !token) {
+    return;
+  }
+  await prisma.authToken.updateMany({
+    where: { token, tokenType: "session", usedAt: null },
+    data: { usedAt: new Date() }
+  });
 }
 
 async function markAuthTokenUsed(id) {
@@ -90,6 +107,8 @@ module.exports = {
   generateMagicCode,
   hashMagicCode,
   createAuthToken,
+  createSessionAccessToken,
+  revokeSessionAccessToken,
   findValidAuthToken,
   markAuthTokenUsed
 };
