@@ -9,6 +9,7 @@ const { createSessionMiddleware } = require("./config/session");
 const { logInfo } = require("./utils/logger");
 const authRoutes = require("./routes/auth");
 const userSettingsRoutes = require("./routes/user-settings");
+const deviceRoutes = require("./routes/device");
 
 const app = express();
 
@@ -24,6 +25,7 @@ const corsOrigins = String(FRONTEND_URL || "")
 app.use(
   cors({
     origin(origin, callback) {
+      // Allow non-browser clients (Roku has no Origin) and configured frontends.
       if (!origin || corsOrigins.includes(origin)) {
         callback(null, true);
       } else {
@@ -52,6 +54,7 @@ app.get("/health", (_req, res) => {
 
 app.use("/auth", authRoutes);
 app.use("/user", userSettingsRoutes);
+app.use("/device", deviceRoutes);
 
 app.listen(PORT, () => {
   logInfo(`API listening on http://localhost:${PORT}`, {

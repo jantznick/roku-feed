@@ -8,7 +8,9 @@ sub Init()
 end sub
 
 sub GetContent()
-    ' request the content feed from the API
+    ' Sync feed URL from linked web account before fetching content
+    SyncFeedFromAccount()
+
     xfer = CreateObject("roURLTransfer")
     xfer.SetCertificatesFile("common:/certs/ca-bundle.crt")
     feedUrl = m.top.feedUrl

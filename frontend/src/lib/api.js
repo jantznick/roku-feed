@@ -100,3 +100,13 @@ export const settingsApi = {
     return data;
   }
 };
+
+export const deviceApi = {
+  async claimPairCode(code) {
+    const { data } = await apiFetch("/device/pair/claim", {
+      method: "POST",
+      body: { code }
+    });
+    return data;
+  }
+};

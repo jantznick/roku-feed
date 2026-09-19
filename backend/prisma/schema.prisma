@@ -16,8 +16,33 @@ model User {
   /// Custom Roku/content feed URL. Null/empty means use DEFAULT_FEED_URL.
   feedUrl       String?
   authTokens    AuthToken[]
+  devices       Device[]
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
+}
+
+/// Roku (or other) device linked to a user via TV pairing code.
+model Device {
+  id                   String    @id @default(cuid())
+  /// Stable client-generated id stored on the device.
+  deviceId             String    @unique
+  /// Short code shown on TV; cleared after claim.
+  pairCode             String?   @unique @db.VarChar(16)
+  pairCodeExpiresAt    DateTime?
+  userId               String?
+  user                 User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Bearer token for device API calls (returned once at link time; stored hashed).
+  accessTokenHash      String?   @unique @db.VarChar(64)
+  /// One-time plaintext token delivered to the device on the next status poll after claim.
+  pendingDeliveryToken String?   @db.VarChar(128)
+  linkedAt             DateTime?
+  lastSeenAt           DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([pairCode])
+  @@map("devices")
 }
 
 /// express-session / connect-pg-simple store

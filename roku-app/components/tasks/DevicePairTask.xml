@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component name="DevicePairTask" extends="Task">
+    <interface>
+        <field id="apiBaseUrl" type="string" />
+        <field id="code" type="string" />
+        <field id="status" type="string" />
+        <field id="message" type="string" />
+        <field id="accessToken" type="string" />
+        <field id="effectiveFeedUrl" type="string" />
+        <field id="email" type="string" />
+        <field id="cancel" type="boolean" />
+    </interface>
+    <script type="text/brightscript" uri="pkg:/source/feedConfig.brs" />
+    <script type="text/brightscript" uri="DevicePairTask.brs" />
+</component>

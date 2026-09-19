@@ -3,7 +3,6 @@
     <script type="text/brightscript" uri="pkg:/source/feedConfig.brs" />
     <script type="text/brightscript" uri="SettingsScreen.brs" />
     <interface>
-        <!-- Set to "reload" when the feed URL changes and content should be refreshed -->
         <field id="feedChanged" type="string" alwaysNotify="true" />
     </interface>
     <children>
@@ -16,7 +15,7 @@
         />
         <Label
             id="hintLabel"
-            text="Custom feed URLs are stored on this device only."
+            text="Link this TV to your web account to sync the feed URL."
             width="1120"
             translation="[80, 140]"
             font="font:SmallSystemFont"
@@ -25,16 +24,23 @@
             id="currentUrlLabel"
             width="1120"
             wrap="true"
-            maxLines="3"
+            maxLines="5"
             translation="[80, 190]"
             font="font:SmallSystemFont"
         />
+        <Label
+            id="pairCodeLabel"
+            width="1120"
+            translation="[80, 320]"
+            font="font:LargeBoldSystemFont"
+            visible="false"
+        />
         <LabelList
             id="menu"
-            translation="[80, 300]"
-            itemSize="[800, 48]"
+            translation="[80, 400]"
+            itemSize="[900, 48]"
             itemSpacing="[0, 12]"
-            numRows="3"
+            numRows="6"
         />
     </children>
 </component>

@@ -54,6 +54,18 @@ Do not start Compose on the shared laptop if that is reserved for other work; ru
 
 Magic-link emails point at `{APP_URL}/auth/verify?token=...` (frontend route).
 
+## Device pairing (Roku ↔ web account)
+
+| Method | Path | Who | Notes |
+|--------|------|--------|--------|
+| POST | `/device/pair/start` | Roku | `{ deviceId? }` → `{ deviceId, code, expiresAt, pollAfterMs }` |
+| GET | `/device/pair/status?deviceId=` | Roku | `pending` / `linked` / `expired`; `accessToken` returned **once** when linked |
+| POST | `/device/pair/claim` | Web (session) | `{ code }` links TV to signed-in user |
+| GET | `/device/settings` | Roku | `Authorization: Bearer <accessToken>` → account feed URL |
+| DELETE | `/device/link` | Roku | Unlink device |
+
+Flow: TV shows code → user signs in on web and enters code → TV polls status, stores bearer token → on each launch TV calls `/device/settings` and uses `effectiveFeedUrl`.
+
 ## Settings API
 
 | Method | Path | Notes |
