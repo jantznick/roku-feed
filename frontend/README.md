@@ -33,7 +33,7 @@ Session cookies (`feed.sid`) are sent with `credentials: "include"`. The backend
 | --- | --- |
 | `/login` | Request magic link / enter 6-digit code |
 | `/auth/verify?token=…` | Complete sign-in from email link |
-| `/` | Settings (auth required): view/edit feed URL, reset, logout |
+| `/` | Settings (auth required): feed URL + link a Roku with pairing code |
 
 ## API integration
 
@@ -48,5 +48,9 @@ Auth (mirrors twin-rinks):
 
 Settings:
 
-- `GET /user/settings` — `{ ok, settings: { feedUrl, defaultFeedUrl } }`
+- `GET /user/settings` — `{ ok, settings: { feedUrl, effectiveFeedUrl, defaultFeedUrl } }`
 - `PUT /user/settings` — `{ feedUrl }` (empty string clears to default)
+
+Device linking:
+
+- `POST /device/pair/claim` — `{ code }` (session auth) links the TV showing that code
