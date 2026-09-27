@@ -16,8 +16,15 @@ end sub
 function OnkeyEvent(key as String, press as Boolean) as Boolean
     result = false
     if press
+        ' Options (*) opens Feed Settings from the grid
+        if key = "options"
+            current = GetCurrentScreen()
+            if current <> invalid and current.subtype() = "GridScreen"
+                ShowSettingsScreen()
+                result = true
+            end if
         ' handle "back" key press
-        if key = "back"
+        else if key = "back"
             numberOfScreens = m.screenStack.Count()
             ' close top screen if there are two or more screens in the screen stack
             if numberOfScreens > 1

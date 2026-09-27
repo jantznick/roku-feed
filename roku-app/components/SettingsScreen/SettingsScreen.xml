@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component name="SettingsScreen" extends="Group" initialFocus="menu">
+    <script type="text/brightscript" uri="pkg:/source/feedConfig.brs" />
+    <script type="text/brightscript" uri="SettingsScreen.brs" />
+    <interface>
+        <field id="feedChanged" type="string" alwaysNotify="true" />
+    </interface>
+    <children>
+        <Label
+            id="titleLabel"
+            text="Feed Settings"
+            width="1120"
+            translation="[80, 80]"
+            font="font:LargeBoldSystemFont"
+        />
+        <Label
+            id="hintLabel"
+            text="Link this TV to your web account to sync the feed URL."
+            width="1120"
+            translation="[80, 140]"
+            font="font:SmallSystemFont"
+        />
+        <Label
+            id="currentUrlLabel"
+            width="1120"
+            wrap="true"
+            maxLines="5"
+            translation="[80, 190]"
+            font="font:SmallSystemFont"
+        />
+        <Label
+            id="pairCodeLabel"
+            width="1120"
+            translation="[80, 320]"
+            font="font:LargeBoldSystemFont"
+            visible="false"
+        />
+        <LabelList
+            id="menu"
+            translation="[80, 400]"
+            itemSize="[900, 48]"
+            itemSpacing="[0, 12]"
+            numRows="6"
+        />
+    </children>
+</component>

@@ -1,0 +1,29 @@
+{
+  "name": "roku-feed-backend",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "prisma generate && SKIP_PRISMA_GENERATE=1 node --watch-preserve-output --watch-path=index.js --watch-path=config.js --watch-path=config --watch-path=lib --watch-path=middleware --watch-path=routes --watch-path=utils index.js",
+    "postinstall": "prisma generate",
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down",
+    "docker:db": "docker compose up -d db",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate deploy",
+    "db:migrate:dev": "prisma migrate dev"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.0",
+    "bcryptjs": "^3.0.3",
+    "connect-pg-simple": "^10.0.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "express-session": "^1.19.0",
+    "pg": "^8.22.0",
+    "prisma": "^6.19.0",
+    "resend": "^6.18.1"
+  }
+}

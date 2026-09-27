@@ -8,11 +8,16 @@ sub Init()
 end sub
 
 sub GetContent()
-    ' request the content feed from the API
+    ' Sync feed URL from linked web account before fetching content
+    SyncFeedFromAccount()
+
     xfer = CreateObject("roURLTransfer")
     xfer.SetCertificatesFile("common:/certs/ca-bundle.crt")
-    ' xfer.SetURL("https://jonathanbduval.com/roku/feeds/roku-developers-feed-v1.json")
-    xfer.SetURL("https://f004.backblazeb2.com/file/roku-hockey/secretfeedfilename.json")
+    feedUrl = m.top.feedUrl
+    if feedUrl = invalid or feedUrl = ""
+        feedUrl = GetFeedUrl()
+    end if
+    xfer.SetURL(feedUrl)
     rsp = xfer.GetToString()
     rootChildren = []
     rows = {}

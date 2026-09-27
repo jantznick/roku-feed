@@ -6,6 +6,9 @@
 /node_modules
 /old
 */node_modules
+**/node_modules
+backend/.env
+frontend/.env
 latest-scrape-output.html
 live_streams.json
 # Root package.json is tracked; do not ignore nested package.json (e.g. web/)

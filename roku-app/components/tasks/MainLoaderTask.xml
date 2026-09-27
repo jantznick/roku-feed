@@ -4,8 +4,10 @@
 <component name="MainLoaderTask" extends="Task">
     <interface>
         <field id="content" type="node" />
+        <field id="feedUrl" type="string" />
     </interface>
 
     <script type="text/brightscript" uri="pkg:/source/utils.brs" />
+    <script type="text/brightscript" uri="pkg:/source/feedConfig.brs" />
     <script type="text/brightscript" uri="pkg:/components/tasks/MainLoaderTask.brs" />
 </component>
