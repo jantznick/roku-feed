@@ -1,5 +1,7 @@
 # Roku Hockey Feed Generator
 
+\* **Work in progress:** A configurable-feeds / multi-publisher direction is underway (`backend/`, `frontend/`, account-linked Roku sync). The sports scraper and clients below remain the supported path today; that existing work will be ported onto the new platform over time. See [Future migration](#future-migration-configurable-feeds).
+
 This project scrapes `onhockey.tv` for NHL, NHL Rookie Camp, NCAA Men's, and AHL hockey games, generates poster images for each game, and creates a Roku-compatible JSON content feed.
 
 ## Apps in this repo
@@ -7,20 +9,14 @@ This project scrapes `onhockey.tv` for NHL, NHL Rookie Camp, NCAA Men's, and AHL
 | Path | Role |
 |------|------|
 | `src/` | Scraper + feed generator → B2 |
-| `roku-app/` | Roku channel (default feed + account-synced URL) |
-| `backend/` | Auth + per-user feed URL + device pairing API |
-| `frontend/` | **Web** settings UI (Vite + React) — login, feed URL, link Roku |
-| `react-native-app/` | **Mobile** Expo app (iOS / Android) — player + same account APIs |
+| `roku-app/` | Roku channel (sports feed; optional account sync \*) |
+| `react-native-app/` | Expo mobile client (iOS / Android) |
 | `web/` | Browser HLS feed viewer |
 | `proxy/` | HLS proxy |
+| `backend/` \* | Auth + per-user feed URL + device pairing API |
+| `frontend/` \* | Web settings UI (login, feed URL, link Roku) |
 
-### Configurable feeds (account sync)
-
-End-to-end guide: **[docs/CONFIGURABLE_FEEDS.md](docs/CONFIGURABLE_FEEDS.md)**  
-(Roku `config/channel.json`, backend auth, web/mobile settings, TV pairing.)
-
-Package READMEs: [backend](backend/README.md) · [frontend](frontend/README.md) · [react-native-app](react-native-app/README.md) · [roku-app](roku-app/README.md)
-
+\* Configurable-feeds pieces — early / evolving. Details in [Future migration](#future-migration-configurable-feeds).
 
 ## Features
 
@@ -64,3 +60,18 @@ To run the script without uploading or deleting any files on Backblaze B2, set t
 ### Debug Mode
 
 To run the script against a local `debug-output.html` file instead of the live website, set the `DEBUG` variable in your `.env` file to `true`.
+
+## Future migration (configurable feeds)
+
+\* **Status: work in progress.** The long-term shape is a config-driven channel shell (theme + feed URL) with web/mobile account settings and Roku pairing, so this repo is not sports-only forever. The scraper, B2 feed, proxy, and current clients keep working as they do today; they will be ported onto that platform gradually (e.g. sports as the first “publisher,” shared auth, baked `roku-app/config/channel.json`).
+
+| Area | Direction |
+|------|-----------|
+| Roku | Package config (`config/channel.json`), account link, synced feed URL |
+| Backend | Magic-link auth, per-user `feedUrl`, device pairing |
+| Web | Vite settings app (`frontend/`) — not Expo |
+| Mobile | Expo app gains the same account APIs over time |
+
+**Guide:** [docs/CONFIGURABLE_FEEDS.md](docs/CONFIGURABLE_FEEDS.md)
+
+Package notes: [backend](backend/README.md) · [frontend](frontend/README.md) · [roku-app](roku-app/README.md) · [react-native-app](react-native-app/README.md)
