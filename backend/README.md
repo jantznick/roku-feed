@@ -95,4 +95,6 @@ Session cookie + CORS credentials required. `FRONTEND_URL` may be a comma-separa
 
 ## Frontend
 
-See `/frontend` (Vite + React) for login + feed URL settings UI.
+- Web UI: `/frontend` (Vite)
+- Mobile: `/react-native-app` (Expo)
+- End-to-end guide: [docs/CONFIGURABLE_FEEDS.md](../docs/CONFIGURABLE_FEEDS.md)

@@ -38,6 +38,7 @@ Native clients use `Authorization: Bearer <accessToken>` from login/verify respo
 
 ## Related
 
+- End-to-end guide: `/docs/CONFIGURABLE_FEEDS.md`
 - Web settings: `/frontend`
 - API: `/backend`
 - Roku channel: `/roku-app`

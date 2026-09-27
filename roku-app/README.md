@@ -38,3 +38,5 @@ Changing the feed URL on the web updates the TV on the next launch/reload (or **
 Without an account link, you can still set a local registry override for sideload testing. Linked accounts prefer the synced web URL over the local override.
 
 Helpers: `source/feedConfig.brs`. Pairing task: `components/tasks/DevicePairTask.*`.
+
+Full system guide: [docs/CONFIGURABLE_FEEDS.md](../docs/CONFIGURABLE_FEEDS.md).

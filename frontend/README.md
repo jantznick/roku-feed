@@ -56,3 +56,5 @@ Settings:
 Device linking:
 
 - `POST /device/pair/claim` — `{ code }` (session auth) links the TV showing that code
+
+End-to-end guide: [docs/CONFIGURABLE_FEEDS.md](../docs/CONFIGURABLE_FEEDS.md).

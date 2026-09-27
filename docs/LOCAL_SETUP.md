@@ -2,6 +2,8 @@
 
 This guide covers running the scraper, Backblaze B2, the React Native app, and the Roku channel on your machine.
 
+For **account login, custom feed URLs, and Roku ↔ web pairing**, see **[CONFIGURABLE_FEEDS.md](./CONFIGURABLE_FEEDS.md)** instead.
+
 ## How the pieces connect
 
 ```
@@ -18,8 +20,10 @@ Scraper (npm start)  →  Backblaze B2  →  React Native app
 | **React Native** | `react-native-app/` | Fetches feed URL, league grid, HLS playback (`expo-video`) |
 | **Web viewer** | `web/` | Simple phone/laptop browser UI for feed + HLS (Docker) |
 | **Roku** | `roku-app/` | Same feed; grid → details → stream picker → playback |
+| **Auth API** | `backend/` | Optional: accounts + synced feed URL (see CONFIGURABLE_FEEDS.md) |
+| **Settings web** | `frontend/` | Optional: login + feed URL + link Roku |
 
-Neither client uses a `.env` file. The feed URL is hardcoded (React Native also allows changing it in **Settings**).
+Without an account link, clients use a default/hardcoded feed URL (Roku: `config/channel.json`; React Native: Settings / AsyncStorage).
 
 ---
 

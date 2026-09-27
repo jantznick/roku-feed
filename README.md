@@ -14,7 +14,12 @@ This project scrapes `onhockey.tv` for NHL, NHL Rookie Camp, NCAA Men's, and AHL
 | `web/` | Browser HLS feed viewer |
 | `proxy/` | HLS proxy |
 
-See **[backend/README.md](backend/README.md)**, **[frontend/README.md](frontend/README.md)**, and **[react-native-app/README.md](react-native-app/README.md)**.
+### Configurable feeds (account sync)
+
+End-to-end guide: **[docs/CONFIGURABLE_FEEDS.md](docs/CONFIGURABLE_FEEDS.md)**  
+(Roku `config/channel.json`, backend auth, web/mobile settings, TV pairing.)
+
+Package READMEs: [backend](backend/README.md) · [frontend](frontend/README.md) · [react-native-app](react-native-app/README.md) · [roku-app](roku-app/README.md)
 
 
 ## Features
