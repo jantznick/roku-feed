@@ -208,8 +208,7 @@ export default function SettingsPage() {
               <h2 className="text-lg font-semibold text-slate-900">Link a Roku</h2>
               <p className="mt-1 text-sm text-slate-600">
                 On the TV, open Feed Settings (<kbd className="rounded bg-slate-100 px-1">*</kbd>),
-                set the API base URL to this backend, then choose <strong>Link Web Account</strong>.
-                Enter the six-digit code here.
+                then choose <strong>Link Web Account</strong>. Enter the six-digit code here.
               </p>
             </div>
             <label className="block text-sm">

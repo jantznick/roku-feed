@@ -229,8 +229,8 @@ export default function SettingsScreen() {
               Link a Roku
             </Text>
             <Text className="text-slate-400 text-sm mb-4">
-              On the TV, open Feed Settings (*), set the API base URL, choose
-              Link Web Account, then enter the 6-digit code here.
+              On the TV, open Feed Settings (*), choose Link Web Account, then
+              enter the 6-digit code here.
             </Text>
             <TextInput
               value={pairCode}

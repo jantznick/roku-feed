@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component name="DevicePairTask" extends="Task">
     <interface>
-        <field id="apiBaseUrl" type="string" />
         <field id="code" type="string" />
         <field id="status" type="string" />
         <field id="message" type="string" />
