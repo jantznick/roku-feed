@@ -4,13 +4,10 @@ sub Init()
 end sub
 
 sub RunPairing()
-    apiBase = m.top.apiBaseUrl
-    if apiBase = invalid or apiBase = ""
-        apiBase = GetApiBaseUrl()
-    end if
+    apiBase = GetApiBaseUrl()
     if apiBase = ""
         m.top.status = "error"
-        m.top.message = "Set API base URL first"
+        m.top.message = "API URL is not configured in this channel build"
         return
     end if
     if Right(apiBase, 1) = "/"
@@ -76,7 +73,6 @@ sub RunPairing()
                     SetLinkedEmail(statusJson.email)
                     m.top.email = statusJson.email
                 end if
-                SetApiBaseUrl(apiBase)
                 m.top.accessToken = GetDeviceAccessToken()
                 m.top.status = "linked"
                 m.top.message = "Linked"

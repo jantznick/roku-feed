@@ -2,10 +2,11 @@
 ' Registry section "feed":
 '   feedUrl          — optional local override (sideload/testing)
 '   syncedFeedUrl    — last effective URL from linked web account
-'   apiBaseUrl       — backend base, e.g. http://192.168.1.10:3001
 '   deviceId         — stable device id for pairing
 '   deviceToken      — bearer token after web claim
 '   linkedEmail      — last known account email
+'
+' API base URL is baked into GetApiBaseUrl() — not user-configurable on device.
 
 function FeedRegistry() as Object
     return CreateObject("roRegistrySection", "feed")
@@ -15,44 +16,9 @@ function GetDefaultFeedUrl() as String
     return "https://f004.backblazeb2.com/file/roku-hockey/secretfeedfilename.json"
 end function
 
+' Package-time backend origin (no trailing slash). Edit before packaging/sideload.
 function GetApiBaseUrl() as String
-    section = FeedRegistry()
-    if section.Exists("apiBaseUrl")
-        value = section.Read("apiBaseUrl")
-        if value <> invalid and value <> ""
-            ' trim trailing slash
-            if Right(value, 1) = "/"
-                return Left(value, Len(value) - 1)
-            end if
-            return value
-        end if
-    end if
-    return ""
-end function
-
-function SetApiBaseUrl(url as String) as Boolean
-    trimmed = url
-    if trimmed = invalid
-        trimmed = ""
-    end if
-    if trimmed = ""
-        section = FeedRegistry()
-        if section.Exists("apiBaseUrl")
-            section.Delete("apiBaseUrl")
-            section.Flush()
-        end if
-        return true
-    end if
-    if not IsValidFeedUrl(trimmed)
-        return false
-    end if
-    if Right(trimmed, 1) = "/"
-        trimmed = Left(trimmed, Len(trimmed) - 1)
-    end if
-    section = FeedRegistry()
-    section.Write("apiBaseUrl", trimmed)
-    section.Flush()
-    return true
+    return "https://api.welikesports.app"
 end function
 
 function GetOrCreateDeviceId() as String
@@ -118,12 +84,12 @@ function SetLinkedEmail(email as String) as Void
 end function
 
 function IsAccountLinked() as Boolean
-    return GetDeviceAccessToken() <> "" and GetApiBaseUrl() <> ""
+    return GetDeviceAccessToken() <> ""
 end function
 
 sub ClearDeviceLink()
     section = FeedRegistry()
-    for each key in ["deviceToken", "linkedEmail", "syncedFeedUrl"]
+    for each key in ["deviceToken", "linkedEmail", "syncedFeedUrl", "apiBaseUrl"]
         if section.Exists(key)
             section.Delete(key)
         end if

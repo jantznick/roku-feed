@@ -18,12 +18,6 @@ end sub
 
 sub RefreshDisplay()
     lines = []
-    apiBase = GetApiBaseUrl()
-    if apiBase <> ""
-        lines.Push("API: " + apiBase)
-    else
-        lines.Push("API: (not set — required to link account)")
-    end if
 
     if IsAccountLinked()
         email = GetLinkedEmail()
@@ -65,7 +59,6 @@ sub RefreshDisplay()
     else
         items.Push({ title: "Link Web Account" })
     end if
-    items.Push({ title: "Set API Base URL" })
     items.Push({ title: "Set Local Feed URL Override" })
     items.Push({ title: "Clear Local Override" })
     items.Push({ title: "Reload Feed" })
@@ -102,10 +95,8 @@ sub OnMenuItemSelected()
             RefreshDisplay()
             m.top.feedChanged = "synced"
         else
-            m.hintLabel.text = "Sync failed. Check API URL and link status."
+            m.hintLabel.text = "Sync failed. Check network and link status."
         end if
-    else if title = "Set API Base URL"
-        ShowApiBaseKeyboard()
     else if title = "Set Local Feed URL Override"
         ShowFeedUrlKeyboard()
     else if title = "Clear Local Override"
@@ -117,19 +108,12 @@ sub OnMenuItemSelected()
 end sub
 
 sub StartAccountLink()
-    if GetApiBaseUrl() = ""
-        m.hintLabel.text = "Set API base URL first (e.g. http://192.168.1.10:3001)"
-        ShowApiBaseKeyboard()
-        return
-    end if
-
     m.pairing = true
     m.hintLabel.text = "Starting pairing…"
     m.pairCodeLabel.visible = true
     m.pairCodeLabel.text = "…"
 
     task = CreateObject("roSGNode", "DevicePairTask")
-    task.apiBaseUrl = GetApiBaseUrl()
     task.ObserveField("status", "OnPairStatus")
     task.ObserveField("code", "OnPairCode")
     m.pairTask = task
@@ -173,52 +157,16 @@ sub OnPairStatus()
     m.pairTask = invalid
 end sub
 
-sub ShowApiBaseKeyboard()
-    dialog = CreateObject("roSGNode", "KeyboardDialog")
-    dialog.title = "API Base URL"
-    dialog.text = GetApiBaseUrl()
-    dialog.buttons = ["Save", "Cancel"]
-    dialog.ObserveField("buttonSelected", "OnApiKeyboardButtonSelected")
-    m.keyboardMode = "api"
-    m.keyboardDialog = dialog
-    scene = m.top.GetScene()
-    if scene <> invalid
-        scene.dialog = dialog
-    end if
-end sub
-
 sub ShowFeedUrlKeyboard()
     dialog = CreateObject("roSGNode", "KeyboardDialog")
     dialog.title = "Local Feed URL Override"
     dialog.text = GetFeedUrl()
     dialog.buttons = ["Save", "Cancel"]
     dialog.ObserveField("buttonSelected", "OnFeedKeyboardButtonSelected")
-    m.keyboardMode = "feed"
     m.keyboardDialog = dialog
     scene = m.top.GetScene()
     if scene <> invalid
         scene.dialog = dialog
-    end if
-end sub
-
-sub OnApiKeyboardButtonSelected()
-    if m.keyboardDialog = invalid
-        return
-    end if
-    buttonIndex = m.keyboardDialog.buttonSelected
-    if buttonIndex = 0
-        url = m.keyboardDialog.text
-        if SetApiBaseUrl(url)
-            CloseKeyboardDialog()
-            RefreshDisplay()
-            if not IsAccountLinked()
-                m.hintLabel.text = "API saved. Choose Link Web Account."
-            end if
-        else
-            m.keyboardDialog.title = "URL must start with http:// or https://"
-        end if
-    else
-        CloseKeyboardDialog()
     end if
 end sub
 
