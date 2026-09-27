@@ -6,19 +6,47 @@
 '   deviceToken      — bearer token after web claim
 '   linkedEmail      — last known account email
 '
-' API base URL is baked into GetApiBaseUrl() — not user-configurable on device.
+' Package config: pkg:/config/channel.json (apiBaseUrl, defaultFeedUrl).
+' Edit that file before packaging — not user-configurable on device.
 
 function FeedRegistry() as Object
     return CreateObject("roRegistrySection", "feed")
 end function
 
+function LoadChannelConfig() as Object
+    raw = ReadAsciiFile("pkg:/config/channel.json")
+    if raw = invalid or raw = ""
+        return {}
+    end if
+    parsed = ParseJson(raw)
+    if parsed = invalid
+        return {}
+    end if
+    return parsed
+end function
+
 function GetDefaultFeedUrl() as String
+    config = LoadChannelConfig()
+    if config <> invalid and config.defaultFeedUrl <> invalid and config.defaultFeedUrl <> ""
+        return config.defaultFeedUrl
+    end if
     return "https://f004.backblazeb2.com/file/roku-hockey/secretfeedfilename.json"
 end function
 
-' Package-time backend origin (no trailing slash). Edit before packaging/sideload.
+' Backend origin from pkg:/config/channel.json (no trailing slash).
 function GetApiBaseUrl() as String
-    return "https://api.welikesports.app"
+    config = LoadChannelConfig()
+    url = ""
+    if config <> invalid and config.apiBaseUrl <> invalid
+        url = config.apiBaseUrl
+    end if
+    if url = invalid or url = ""
+        return ""
+    end if
+    if Right(url, 1) = "/"
+        return Left(url, Len(url) - 1)
+    end if
+    return url
 end function
 
 function GetOrCreateDeviceId() as String

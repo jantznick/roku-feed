@@ -10,9 +10,18 @@ SceneGraph channel that loads a JSON content feed and plays streams.
 https://f004.backblazeb2.com/file/roku-hockey/secretfeedfilename.json
 ```
 
-### Backend API URL (baked in)
+### Backend API URL (package config)
 
-The auth/pairing API origin is **hardcoded** in `source/feedConfig.brs` → `GetApiBaseUrl()`. It is not editable on the device. Change that constant before packaging or sideloading.
+Set in **`config/channel.json`** before packaging/sideloading (not editable on the device):
+
+```json
+{
+  "apiBaseUrl": "https://api.welikesports.app",
+  "defaultFeedUrl": "https://f004.backblazeb2.com/file/roku-hockey/secretfeedfilename.json"
+}
+```
+
+`GetApiBaseUrl()` / `GetDefaultFeedUrl()` read that file from `pkg:/config/channel.json`.
 
 ### Link to web account
 
