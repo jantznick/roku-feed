@@ -3,12 +3,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { decodeProxyPayload, encodeProxyPayload } from './proxy-payload.js';
 
-const DEFAULT_TTL_MS = 15 * 60 * 1000;
+const DEFAULT_TTL_MS = 3 * 60 * 60 * 1000; // ~typical live broadcast length
 
 /**
  * TTL for reusing previously resolved stream URLs.
  * Reads STREAM_REUSE_TTL_MS, or STREAM_REUSE_TTL_MINUTES (converted to ms).
- * Default 15 minutes. 0 disables reuse (always rescrape).
+ * Default 3 hours. 0 disables reuse (always rescrape).
  * @returns {number}
  */
 export function getStreamReuseTtlMs() {
