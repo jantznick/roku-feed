@@ -1,6 +1,7 @@
 import puppeteer from 'puppeteer';
 import fs from 'fs/promises';
-import { safeClosePage } from './puppeteer-utils.js';
+import { safeClosePage, isBrowserConnected } from './puppeteer-utils.js';
+import { mapPool, getEmbedConcurrency } from './async-pool.js';
 
 const SCRAPER_URL = "https://onhockey.tv/";
 const DEBUG_FILE_PATH = "debug-output.html";
@@ -315,47 +316,65 @@ async function getEmbedStreamUrl(browser, embedUrl, label = 'embed') {
 
 /**
  * Takes a list of games and performs a "deep scrape" to find the actual stream URLs.
+ * Games are processed with bounded concurrency (EMBED_CONCURRENCY); streams within
+ * a game stay sequential.
  * @param {puppeteer.Browser} browser The Puppeteer browser instance.
  * @param {any[]} games The games to deep scrape.
  * @returns {Promise<any[]>} A promise that resolves to the list of games with updated stream links.
  */
 export async function deepScrapeGames(browser, games) {
-    console.log(`Performing deep scrape for ${games.length} new games...`);
-    const processedGames = [];
+    const concurrency = getEmbedConcurrency();
+    console.log(
+        `Performing deep scrape for ${games.length} new games (concurrency=${concurrency})...`
+    );
 
-    for (const game of games) {
-        const processedStreamLinks = [];
-        for (const stream of game.streamLinks) {
-            let finalUrl = null;
-            // Create a full URL to handle relative paths
-            const absoluteUrl = new URL(stream.url, SCRAPER_URL).href;
+    const results = await mapPool(
+        games,
+        concurrency,
+        async (game) => {
+            if (!isBrowserConnected(browser)) {
+                return null;
+            }
 
-            if (stream.provider === 'fluidtv') {
-                const urlParams = new URLSearchParams(new URL(absoluteUrl).search);
-                finalUrl = urlParams.get('channel') || '';
-            } else if (stream.provider === 'vodcast' || stream.provider === 'brcove') {
-                const urlParams = new URLSearchParams(new URL(absoluteUrl).search);
-                const channel = urlParams.get('channel');
-                if (channel) {
-                    // Handle URLs that are protocol-relative (e.g., //players.brightcove.net/...)
-                    const embedUrl = channel.startsWith('//') ? `https:${channel}` : channel;
-                    finalUrl = await getEmbedStreamUrl(browser, embedUrl, stream.provider);
+            const processedStreamLinks = [];
+            for (const stream of game.streamLinks) {
+                if (!isBrowserConnected(browser)) {
+                    break;
+                }
+
+                let finalUrl = null;
+                const absoluteUrl = new URL(stream.url, SCRAPER_URL).href;
+
+                if (stream.provider === 'fluidtv') {
+                    const urlParams = new URLSearchParams(new URL(absoluteUrl).search);
+                    finalUrl = urlParams.get('channel') || '';
+                } else if (stream.provider === 'vodcast' || stream.provider === 'brcove') {
+                    const urlParams = new URLSearchParams(new URL(absoluteUrl).search);
+                    const channel = urlParams.get('channel');
+                    if (channel) {
+                        const embedUrl = channel.startsWith('//') ? `https:${channel}` : channel;
+                        finalUrl = await getEmbedStreamUrl(browser, embedUrl, stream.provider);
+                    }
+                }
+
+                if (finalUrl) {
+                    processedStreamLinks.push({
+                        ...stream,
+                        url: finalUrl,
+                        name: stream.name || stream.provider,
+                    });
                 }
             }
 
-            if (finalUrl) {
-                processedStreamLinks.push({
-                    ...stream,
-                    url: finalUrl,
-                    name: stream.name || stream.provider,
-                });
+            if (processedStreamLinks.length === 0) {
+                return null;
             }
-        }
+            return { ...game, streamLinks: processedStreamLinks };
+        },
+        { shouldStop: () => !isBrowserConnected(browser) }
+    );
 
-        if (processedStreamLinks.length > 0) {
-            processedGames.push({ ...game, streamLinks: processedStreamLinks });
-        }
-    }
+    const processedGames = results.filter(Boolean);
     console.log(`Deep scrape complete. Found streams for ${processedGames.length} games.`);
     return processedGames;
 }

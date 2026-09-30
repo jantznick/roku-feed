@@ -1,18 +1,19 @@
-import puppeteer from 'puppeteer';
 import fs from 'fs/promises';
 import path from 'path';
-import Fuse from 'fuse.js';
 import { isBrowserConnected } from './puppeteer-utils.js';
 import { resolveStreamFromEmbed } from './embed-resolver.js';
 import { buildFetchHeaders } from './proxy-payload.js';
+import { mapPool, getEmbedConcurrency } from './async-pool.js';
+import { shouldReuseStreams, reuseStreamsFromFeedItem } from './stream-reuse.js';
 
 const LIVE_MATCHES_URL = 'https://streamed.pk/api/matches/live';
 const STREAM_API_BASE_URL = 'https://streamed.pk/api/stream';
 const SAMPLE_DATA_PATH = path.resolve(process.cwd(), 'data', 'streamed-live-sample.json');
+const MAX_STREAMS_PER_GAME = 5;
 
 /**
  * Sanitizes a string to be URL- and filename-safe.
- * @param {string} text 
+ * @param {string} text
  * @returns {string}
  */
 function slugify(text) {
@@ -28,12 +29,60 @@ function slugify(text) {
     .replace(/^-+|-+$/g, ''); // Trim hyphens from start/end
 }
 
+function buildGameId(title, date) {
+    return `${slugify(title)}-${new Date(date || Date.now()).toISOString().slice(0, 10)}`;
+}
 
-// This function is now exported and will be called by index.js
-export async function scrapeStreamedGames(browser, sportsCategories) {
+/**
+ * Resolve embed→m3u8 for a list of jobs with bounded concurrency.
+ * Results are assigned back onto each job's game.finalStreamInfo (max 5 each).
+ * @param {import('puppeteer').Browser} browser
+ * @param {Array<{ game: object, embedUrl: string, sourceName: string }>} resolveJobs
+ */
+async function resolveEmbedJobs(browser, resolveJobs) {
+    if (resolveJobs.length === 0) {
+        return;
+    }
+
+    const concurrency = getEmbedConcurrency();
+    console.log(
+        `Resolving ${resolveJobs.length} embeds with concurrency=${concurrency}...`
+    );
+
+    const results = await mapPool(
+        resolveJobs,
+        concurrency,
+        async (job) => {
+            if (!isBrowserConnected(browser)) {
+                return null;
+            }
+            return getFinalStreamUrl(browser, job.embedUrl, job.sourceName);
+        },
+        { shouldStop: () => !isBrowserConnected(browser) }
+    );
+
+    for (let i = 0; i < resolveJobs.length; i++) {
+        const info = results[i];
+        if (!info) {
+            continue;
+        }
+        const { game } = resolveJobs[i];
+        if (game.finalStreamInfo.length >= MAX_STREAMS_PER_GAME) {
+            continue;
+        }
+        game.finalStreamInfo.push(info);
+    }
+}
+
+/**
+ * @param {import('puppeteer').Browser} browser
+ * @param {string[]} sportsCategories
+ * @param {Map<string, object>} [previousById] - prior feed items for TTL stream reuse
+ */
+export async function scrapeStreamedGames(browser, sportsCategories, previousById = new Map()) {
     console.log(`\n--- Scraping Streamed.pk for: ${sportsCategories.join(', ')} ---`);
-    
-    // 1. Get all game data from the API
+
+    // 1. Get all game data from the API (cheap — no Puppeteer)
     const allGames = await getLiveStreams(sportsCategories);
     if (allGames.length === 0) {
         console.log('No streams found for the specified categories on Streamed.pk.');
@@ -42,63 +91,70 @@ export async function scrapeStreamedGames(browser, sportsCategories) {
 
     console.log(`\n--- Processing ${allGames.length} games from Streamed.pk... ---`);
 
+    const resolveJobs = [];
+    let reusedCount = 0;
+
     for (const game of allGames) {
+        game.id = buildGameId(game.title, game.date);
         game.finalStreamInfo = [];
+        game.reusedStreamLinks = null;
+
+        const previousItem = previousById.get(game.id);
+        if (shouldReuseStreams(previousItem, game.embedUrls, { currentTitle: game.title })) {
+            const reused = reuseStreamsFromFeedItem(previousItem);
+            if (reused) {
+                game.reusedStreamLinks = reused;
+                reusedCount += 1;
+                console.log(
+                    `↻ Reusing ${reused.length} stream(s) for: ${game.title} (still fresh)`
+                );
+                continue;
+            }
+        }
+
+        console.log(`\nProcessing game: ${game.title} (Category: ${game.category})`);
+        for (const embed of game.embedUrls) {
+            resolveJobs.push({
+                game,
+                embedUrl: embed.url,
+                sourceName: embed.sourceName,
+            });
+        }
     }
 
-    // 2. Deep scrape to find the final m3u8 URLs
-    for (const game of allGames) {
-        console.log(`\nProcessing game: ${game.title} (Category: ${game.category})`);
-        for (const embedUrl of game.embedUrls) {
-            if (!isBrowserConnected(browser)) {
-                console.error('Browser disconnected; stopping remaining Streamed.pk embed scrapes.');
-                break;
-            }
-            // Stop if we have already found 5 valid streams.
-            if (game.finalStreamInfo.length >= 5) {
-                console.log('-- Found 5 streams. Moving to next game.');
-                break;
-            }
-            // Pass the source name along with the URL
-            const finalInfo = await getFinalStreamUrl(browser, embedUrl.url, embedUrl.sourceName);
-            if (finalInfo) {
-                game.finalStreamInfo.push(finalInfo);
-            }
-        }
-        if (!isBrowserConnected(browser)) {
-            break;
-        }
-    }
+    console.log(
+        `\nStream reuse: ${reusedCount} game(s) skipped Puppeteer; ` +
+        `${allGames.length - reusedCount} game(s) need embed resolve.`
+    );
+
+    await resolveEmbedJobs(browser, resolveJobs);
 
     // 3. Transform the data into the final format for the main feed
     const dateAdded = new Date().toISOString();
     const formattedGames = allGames.map(game => {
-        const streamLinks = (game.finalStreamInfo || []).map((info, index) => {
-            if (!info) return null;
-            return {
-                name: info.sourceName || `Stream ${index + 1}`, // Fallback for the name
-                url: info.streamUrl,
-                headers: {
-                    Referer: info.referer
-                },
-                requestHeaders: info.requestHeaders || {},
-                embedUrl: info.embedUrl,
-                directFetchOk: Boolean(info.directFetchOk),
-                confirmedAt: info.confirmedAt
-            };
-        }).filter(Boolean);
+        const streamLinks = game.reusedStreamLinks
+            ? game.reusedStreamLinks
+            : (game.finalStreamInfo || []).map((info, index) => {
+                if (!info) return null;
+                return {
+                    name: info.sourceName || `Stream ${index + 1}`,
+                    url: info.streamUrl,
+                    headers: {
+                        Referer: info.referer
+                    },
+                    requestHeaders: info.requestHeaders || {},
+                    embedUrl: info.embedUrl,
+                    directFetchOk: Boolean(info.directFetchOk),
+                    confirmedAt: info.confirmedAt
+                };
+            }).filter(Boolean);
 
         if (streamLinks.length === 0) return null;
 
-        // The main feed generator needs teams split for the image generator.
-        // We'll make a best-effort attempt to split "Team A vs Team B" titles.
         const teams = game.title.includes(' vs ') ? game.title.split(' vs ') : [game.title, ''];
 
-
         return {
-            // A stable ID is crucial for state management to detect new/removed games.
-            // We now slugify the title to ensure it's a valid filename.
-            id: `${slugify(game.title)}-${new Date(game.date || Date.now()).toISOString().slice(0, 10)}`,
+            id: game.id,
             name: game.title,
             teams: teams,
             time: new Date(game.date || Date.now()).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
@@ -106,7 +162,7 @@ export async function scrapeStreamedGames(browser, sportsCategories) {
             releaseDate: new Date(game.date || Date.now()).toISOString(),
             dateAdded: dateAdded,
             league: getLeague(game),
-            poster: game.poster, // Pass the poster URL through
+            poster: game.poster,
             streamLinks: streamLinks
         };
     }).filter(Boolean);
@@ -162,7 +218,7 @@ async function getLiveStreams(categories) {
         for (const game of sportGames) {
             try {
                 const allEmbedUrls = [];
-                
+
                 for (const source of game.sources) {
                     try {
                         const streamApiUrl = `${STREAM_API_BASE_URL}/${source.source}/${source.id}`;
@@ -171,11 +227,9 @@ async function getLiveStreams(categories) {
                         const streams = await streamsResponse.json();
 
                         if (streams && streams.length > 0) {
-                            // Now store an object with both the URL and the source name,
-                            // while filtering out any unwanted domains like 'gg.poocloud.in'.
                             const embedInfos = streams.map(stream => ({
                                 url: stream.embedUrl,
-                                sourceName: source.source // Keep track of the source name
+                                sourceName: source.source
                             })).filter(info => !info.url.includes('gg.poocloud.in'));
                             allEmbedUrls.push(...embedInfos);
                         }
@@ -197,7 +251,7 @@ async function getLiveStreams(categories) {
                 console.error(`Could not process game "${game.title}": ${gameError.message}`);
             }
         }
-        
+
         return allGameStreams;
 
     } catch (error) {
@@ -247,7 +301,11 @@ export async function getFinalStreamUrl(browser, embedUrl, sourceName) {
     return streamInfo;
 }
 
-export async function scrape247Channels(browser) {
+/**
+ * @param {import('puppeteer').Browser} browser
+ * @param {Map<string, object>} [previousById]
+ */
+export async function scrape247Channels(browser, previousById = new Map()) {
     console.log(`\n--- Scraping for 24/7 Channels ---`);
     const channelMap = {
         'hockey': ['NHL NETWORK'],
@@ -255,9 +313,8 @@ export async function scrape247Channels(browser) {
         'basketball': ['TNT', 'NBA TV'],
         'american-football': ['ESPN USA', 'NFL REDZONE', 'NFL NETWORK']
     };
-    
+
     let allChannels = [];
-    const allTargetTitles = Object.values(channelMap).flat();
 
     for (const sport in channelMap) {
         try {
@@ -267,17 +324,13 @@ export async function scrape247Channels(browser) {
             const sportChannels = await response.json();
             const targetTitles = channelMap[sport];
 
-            // For each channel from the API, check if its title includes one of our targets.
             for (const channel of sportChannels) {
                 for (const targetTitle of targetTitles) {
-                    // Use a case-insensitive check to ensure a match.
                     if (channel.title.toLowerCase().includes(targetTitle.toLowerCase())) {
-                        // If it matches, assign the clean title and add it.
                         channel.cleanTitle = targetTitle;
                         allChannels.push(channel);
                         console.log(`  -> Matched API title "${channel.title}" to target "${targetTitle}"`);
-                        // Break to avoid matching the same channel multiple times if titles overlap
-                        break; 
+                        break;
                     }
                 }
             }
@@ -293,14 +346,15 @@ export async function scrape247Channels(browser) {
 
     console.log(`\n--- Processing ${allChannels.length} found 24/7 channels... ---`);
 
+    const resolveJobs = [];
+    let reusedCount = 0;
+
     for (const channel of allChannels) {
+        channel.id = channel.cleanTitle.replace(/\s+/g, '-');
         channel.finalStreamInfo = [];
-    }
-    
-    // Use the existing deep scrape logic to get the final stream URLs
-    for (const channel of allChannels) {
-        console.log(`\nProcessing channel: ${channel.title}`);
+        channel.reusedStreamLinks = null;
         channel.embedUrls = [];
+
         for (const source of channel.sources) {
              try {
                 const streamApiUrl = `${STREAM_API_BASE_URL}/${source.source}/${source.id}`;
@@ -316,71 +370,78 @@ export async function scrape247Channels(browser) {
                 }
             } catch (e) {}
         }
-        
-        // Deprioritize 'gg.poocloud.in' for channels as well.
+
         channel.embedUrls.sort((a, b) => {
             const aIsPoo = a.url.includes('gg.poocloud.in');
             const bIsPoo = b.url.includes('gg.poocloud.in');
             return aIsPoo - bIsPoo;
         });
 
-        channel.finalStreamInfo = [];
-        for (const embedUrl of channel.embedUrls) {
-            if (!isBrowserConnected(browser)) {
-                console.error('Browser disconnected; stopping remaining 24/7 channel embed scrapes.');
-                break;
-            }
-            // Stop if we have already found 5 valid streams.
-            if (channel.finalStreamInfo.length >= 5) {
-                console.log('-- Found 5 streams for channel. Moving to next channel.');
-                break;
-            }
-            const finalInfo = await getFinalStreamUrl(browser, embedUrl.url, embedUrl.sourceName);
-            if (finalInfo) {
-                channel.finalStreamInfo.push(finalInfo);
+        const previousItem = previousById.get(channel.id);
+        if (shouldReuseStreams(previousItem, channel.embedUrls, { currentTitle: channel.cleanTitle })) {
+            const reused = reuseStreamsFromFeedItem(previousItem);
+            if (reused) {
+                channel.reusedStreamLinks = reused;
+                reusedCount += 1;
+                console.log(
+                    `↻ Reusing ${reused.length} stream(s) for channel: ${channel.cleanTitle} (still fresh)`
+                );
+                continue;
             }
         }
-        if (!isBrowserConnected(browser)) {
-            break;
+
+        console.log(`\nProcessing channel: ${channel.title}`);
+        for (const embed of channel.embedUrls) {
+            resolveJobs.push({
+                game: channel,
+                embedUrl: embed.url,
+                sourceName: embed.sourceName,
+            });
         }
     }
 
-    // Format the channels into the standard game object
+    console.log(
+        `\n24/7 reuse: ${reusedCount} channel(s) skipped Puppeteer; ` +
+        `${allChannels.length - reusedCount} channel(s) need embed resolve.`
+    );
+
+    await resolveEmbedJobs(browser, resolveJobs);
+
     const formattedChannels = allChannels.map(channel => {
-        const streamLinks = (channel.finalStreamInfo || []).map((info, index) => {
-            if (!info) return null;
-            return {
-                name: info.sourceName || `Stream ${index + 1}`, // Fallback for the name
-                url: info.streamUrl,
-                headers: { Referer: info.referer },
-                requestHeaders: info.requestHeaders || {},
-                embedUrl: info.embedUrl,
-                directFetchOk: Boolean(info.directFetchOk),
-                confirmedAt: info.confirmedAt
-            };
-        }).filter(Boolean);
+        const streamLinks = channel.reusedStreamLinks
+            ? channel.reusedStreamLinks
+            : (channel.finalStreamInfo || []).map((info, index) => {
+                if (!info) return null;
+                return {
+                    name: info.sourceName || `Stream ${index + 1}`,
+                    url: info.streamUrl,
+                    headers: { Referer: info.referer },
+                    requestHeaders: info.requestHeaders || {},
+                    embedUrl: info.embedUrl,
+                    directFetchOk: Boolean(info.directFetchOk),
+                    confirmedAt: info.confirmedAt
+                };
+            }).filter(Boolean);
 
         if (streamLinks.length === 0) return null;
-        
-        // Override the poster with our hardcoded version using the clean title.
-        const customLogo = channelLogoMap[channel.cleanTitle]; // Use the clean title for lookup
+
+        const customLogo = channelLogoMap[channel.cleanTitle];
         const posterUrl = customLogo ? `${LOGO_BASE_URL}${customLogo}` : channel.poster;
 
         return {
-            id: channel.cleanTitle.replace(/\s+/g, '-'), // Use the clean, slugified title for a stable ID
-            name: channel.cleanTitle, // Use the clean title for the feed
-            teams: [channel.cleanTitle, ''], // For image generation
+            id: channel.id,
+            name: channel.cleanTitle,
+            teams: [channel.cleanTitle, ''],
             time: '24/7',
             shortDescription: 'Live 24/7 Channel',
             releaseDate: new Date().toISOString(),
             dateAdded: new Date().toISOString(),
-            league: '24/7 Channels', // Assign to the new league
+            league: '24/7 Channels',
             poster: posterUrl,
             streamLinks: streamLinks
         };
     }).filter(Boolean);
 
-    // Remove duplicates that might arise if a channel is matched more than once.
     const uniqueChannels = Array.from(new Map(formattedChannels.map(c => [c.id, c])).values());
 
     console.log(`✅ Found and processed ${uniqueChannels.length} unique 24/7 channels.`);

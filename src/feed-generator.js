@@ -1,10 +1,17 @@
 import { buildProxyUrl } from './proxy-payload.js';
+import { getEmbedSignature } from './stream-reuse.js';
+
+export { getEmbedSignature };
 
 const FALLBACK_THUMBNAIL = "https://via.placeholder.com/1280x720.png?text=Image+Not+Available";
 const PROXY_SERVER = process.env.PROXY_SERVER || 'http://192.168.1.50:8787';
 const SKIP_PROXY = process.env.SKIP_PROXY === 'true';
 
-/** Stable fingerprint of raw stream URLs (before proxy rewrite) for change detection. */
+/**
+ * Fingerprint of raw stream URLs (before proxy rewrite).
+ * Useful for debugging; Streamed CDN URLs rotate every run, so prefer
+ * embedSignature (from getEmbedSignature) for "same sources?" change detection.
+ */
 export function getStreamSignature(game) {
     return (game.streamLinks || [])
         .map((s) => s.url)
@@ -66,7 +73,10 @@ export function createFeedItem(game, imageUrl) {
         thumbnail: imageUrl || FALLBACK_THUMBNAIL,
         genres: ["sports", sportGenre],
         releaseDate: game.releaseDate.split('T')[0], // Use the date part of the releaseDate
+        // Raw m3u8 fingerprint (rotates on Streamed); keep for debugging / onhockey fallback.
         streamSignature: getStreamSignature(game),
+        // Stable embed/source identity for TTL reuse and compareGames.
+        embedSignature: getEmbedSignature(game.streamLinks || []),
         content: {
             dateAdded: game.releaseDate, // Use the full releaseDate ISO string
             duration: 3 * 60 * 60, // ~3 hours
