@@ -391,7 +391,7 @@ Doing **2 + 5** first attacks the measured bottleneck (sequential Puppeteer + re
 
 ## Open design questions (when implementing)
 
-1. **TTL for stream reuse** — how long until a “working” m3u8 is assumed stale? (signed URL `expires=` when present vs fixed 15m.)
+1. **TTL for stream reuse** — how long until a “working” m3u8 is assumed stale? (implemented default: 3 hours / typical broadcast length; override via `STREAM_REUSE_TTL_MINUTES`.)
 2. **Priority semantics** — exclude non-priority sports, or scrape them later in the same run?
 3. **API auth** — device/user bearer vs dedicated feed API key vs secret URL path?
 4. **Single global scrape vs per-user scrape** — strongly prefer global scrape + filter at read if idea 4 lands.
