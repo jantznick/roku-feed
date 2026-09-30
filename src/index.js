@@ -5,12 +5,14 @@ import fs from 'fs/promises';
 import path from 'path';
 import { scrapeMainPage, deepScrapeGames } from './scraper.js';
 import { scrapeStreamedGames, scrape247Channels } from './streamed-scraper.js';
-import { getPreviousFeed, compareGames } from './state-manager.js';
+import { getPreviousFeed, compareGames, indexFeedItemsById } from './state-manager.js';
 import { generateImages } from './image-generator.js';
 import { downloadPosters } from './poster-downloader.js';
 import { createFeedItem, generateFeedShell } from './feed-generator.js';
 import { uploadImages, uploadFeed, deleteImages } from './uploader.js';
 import { logLeagues } from './league-logger.js';
+import { getEmbedConcurrency } from './async-pool.js';
+import { getStreamReuseTtlMs } from './stream-reuse.js';
 
 const FEED_FILE_PATH = path.resolve(process.cwd(), 'dist', 'feed.json');
 
@@ -104,6 +106,9 @@ async function main() {
   console.log(`- DRY RUN: ${process.env.DRY_RUN === 'true' ? '✅ Enabled' : '❌ Disabled'}`);
   console.log(`- SKIP PROXY: ${process.env.SKIP_PROXY === 'true' ? '✅ Direct stream URLs only' : '❌ Use proxy when Referer present'}`);
   console.log(`- SKIP ONHOCKEY: ${process.env.SKIP_ONHOCKEY === 'true' ? '✅ Skipping onhockey.tv' : '❌ Scraping onhockey.tv'}`);
+  const reuseTtlMs = getStreamReuseTtlMs();
+  console.log(`- STREAM REUSE TTL: ${reuseTtlMs === 0 ? '❌ Disabled (always rescrape)' : `✅ ${Math.round(reuseTtlMs / 60000)} min`}`);
+  console.log(`- EMBED CONCURRENCY: ${getEmbedConcurrency()}`);
   console.log('-------------------------');
 
   const browser = await puppeteer.launch(getPuppeteerLaunchOptions());
@@ -118,6 +123,9 @@ async function main() {
         delete feed.content;
     }
 
+    // Index early so Streamed/24/7 can skip Puppeteer for still-fresh games.
+    const previousByIdForReuse = indexFeedItemsById(feed);
+
     // 2. Scrape for games
     const skipOnHockey = process.env.SKIP_ONHOCKEY === 'true';
     const onHockeyGames = skipOnHockey ? [] : await scrapeMainPage(browser);
@@ -131,8 +139,8 @@ async function main() {
       'motor-sports',
       'football'
     ];
-    const streamedGames = await scrapeStreamedGames(browser, sportsCategories);
-    const channels247 = await scrape247Channels(browser);
+    const streamedGames = await scrapeStreamedGames(browser, sportsCategories, previousByIdForReuse);
+    const channels247 = await scrape247Channels(browser, previousByIdForReuse);
 
 
     // Combine the games from all sources

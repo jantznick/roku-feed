@@ -2,6 +2,11 @@ import fs from 'fs/promises';
 import path from 'path';
 import { downloadFeed } from './uploader.js';
 import { getStreamSignature } from './feed-generator.js';
+import {
+    getEmbedSignature,
+    extractStreamLinksFromFeedItem,
+    isStreamCacheFresh,
+} from './stream-reuse.js';
 
 const FEED_FILE_PATH = path.resolve(process.cwd(), 'dist', 'feed.json');
 
@@ -34,15 +39,84 @@ export async function getPreviousFeed(defaultShell) {
     }
 }
 
+/**
+ * Index all league-array feed items by id.
+ * Skips non-array feed keys (providerName, lastUpdated, language, …).
+ * @param {object} feed
+ * @returns {Map<string, object>}
+ */
+export function indexFeedItemsById(feed) {
+    const byId = new Map();
+    if (!feed || typeof feed !== 'object') {
+        return byId;
+    }
+
+    for (const value of Object.values(feed)) {
+        if (!Array.isArray(value)) {
+            continue;
+        }
+        for (const item of value) {
+            if (item?.id != null) {
+                byId.set(item.id, item);
+            }
+        }
+    }
+
+    return byId;
+}
+
+/**
+ * Decide whether a current game needs a new feed item vs the previous one.
+ *
+ * Change detection notes:
+ * - Prefer embedSignature + TTL freshness when either side has embed identity
+ *   (Streamed). Rotating m3u8 URLs alone no longer force an "update".
+ * - onhockey often has no embedUrl on streamLinks: if both embedSignatures are
+ *   empty, fall back to streamSignature (raw URLs) as before.
+ * - When the Streamed integrator skips resolve and reuses previous streamLinks
+ *   (same URLs), streamSignature will also match — that is expected for the
+ *   reuse path. Without reuse, freshly resolved Streamed URLs rotate and would
+ *   always look "updated" under streamSignature alone.
+ *
+ * @param {object} currentGame
+ * @param {object} previousItem
+ * @returns {boolean}
+ */
 function gameNeedsUpdate(currentGame, previousItem) {
     if (previousItem.title !== currentGame.name) {
         return true;
     }
 
-    const currentSignature = getStreamSignature(currentGame);
-    const previousSignature = previousItem.streamSignature || '';
+    const currentEmbedSig =
+        currentGame.embedSignature ||
+        getEmbedSignature(currentGame.streamLinks || []) ||
+        '';
+    const previousEmbedSig =
+        previousItem.embedSignature ||
+        getEmbedSignature(extractStreamLinksFromFeedItem(previousItem)) ||
+        '';
 
-    return currentSignature !== previousSignature;
+    // onhockey / no-embed path: empty embed identity on both → raw URL signature.
+    if (!currentEmbedSig && !previousEmbedSig) {
+        const currentSignature = getStreamSignature(currentGame);
+        const previousSignature = previousItem.streamSignature || '';
+        return currentSignature !== previousSignature;
+    }
+
+    // Same embed identity and still-fresh confirmedAt → unchanged (ignore m3u8 rotation).
+    // Exact signature match is enough here: scrapeStreamedGames reuses or re-resolves
+    // before compareGames, so "fresh + same embeds" games arrive with reused links
+    // (same signature) or are marked for update when TTL expired.
+    if (
+        currentEmbedSig &&
+        previousEmbedSig &&
+        currentEmbedSig === previousEmbedSig &&
+        isStreamCacheFresh(previousItem)
+    ) {
+        return false;
+    }
+
+    return true;
 }
 
 /**
