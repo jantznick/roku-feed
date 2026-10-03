@@ -4,24 +4,43 @@ Vite + React 19 + Tailwind CSS v4 **browser** app for magic-link login, feed URL
 
 Mobile / app-store clients live in `/react-native-app` (Expo). This package is web-only.
 
-## Setup
+## Where should it run?
+
+| Setup | Recommendation |
+|-------|----------------|
+| **Home server (LAN / Roku pairing)** | Serve from Docker on the server via `backend/docker-compose.yml` (API + UI together). |
+| **Solo laptop testing** | `npm run dev` on the laptop is fine; point `VITE_API_BASE_URL` at the API (local or server). |
+
+Magic links and cookie CORS use the URL you open in the browser (`APP_URL` / `FRONTEND_URL` on the API). Phones and other PCs need a host they can reach — usually the home server, not `localhost` on your laptop.
+
+## Docker (recommended on the home server)
+
+The frontend is built into the compose stack under `backend/`:
+
+```bash
+cd backend
+cp .env.example .env
+# PUBLIC_API_BASE_URL=http://192.168.x.x:3001
+# FRONTEND_URL / APP_URL / PUBLIC_FRONTEND_URL=http://192.168.x.x:5173
+docker compose up --build -d
+```
+
+Then open `http://<server>:5173`. See [docs/CONFIGURABLE_FEEDS.md](../docs/CONFIGURABLE_FEEDS.md).
+
+## Local Vite (dev)
 
 ```bash
 cd frontend
 cp .env.example .env
 npm install
-npm run dev
+npm run dev -- --host 0.0.0.0
 ```
-
-Dev server defaults to Vite’s port (usually `http://localhost:5173`). Point `VITE_API_BASE_URL` at the backend (default `http://localhost:3001`).
-
-## Environment
 
 | Variable | Default | Description |
 | --- | --- | --- |
 | `VITE_API_BASE_URL` | `http://localhost:3001` | Backend origin for API calls |
 
-Session cookies (`feed.sid`) are sent with `credentials: "include"`. The backend must allow CORS with credentials from the Vite origin.
+Session cookies (`feed.sid`) are sent with `credentials: "include"`. The backend must allow CORS with credentials from this app’s origin.
 
 ## Scripts
 

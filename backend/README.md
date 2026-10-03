@@ -11,18 +11,28 @@ Small Express + Prisma + Postgres backend for magic-link auth and per-user custo
 
 ## Quick start (Docker)
 
-From this directory:
+From this directory — starts **Postgres + API + settings frontend**:
 
 ```bash
 cp .env.example .env
-# edit SESSION_SECRET (and RESEND_* if you want real email)
-docker compose up --build
+# edit SESSION_SECRET
+# for home-server LAN: set PUBLIC_API_BASE_URL, PUBLIC_FRONTEND_URL, FRONTEND_URL, APP_URL
+#   to http://<server-ip>:3001 and http://<server-ip>:5173
+docker compose up --build -d
 ```
 
-API: `http://localhost:3001`  
-Health: `GET /health`
+| Service | URL |
+|---------|-----|
+| API | `http://localhost:3001` (`GET /health`) |
+| Settings UI | `http://localhost:5173` |
 
-Migrations run automatically on container start.
+Migrations run automatically on API container start.
+
+Rebuild the frontend image after changing `PUBLIC_API_BASE_URL` (it is compiled into the JS bundle):
+
+```bash
+docker compose up --build -d frontend
+```
 
 ## Local (without Docker API)
 
