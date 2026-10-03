@@ -1,7 +1,13 @@
-# Roku Feed API + PostgreSQL.
+# Auth stack: Postgres + API + settings web UI.
 #
 # From this directory (backend):
+#   cp .env.example .env   # edit PUBLIC_* / FRONTEND_URL / APP_URL for your LAN
 #   docker compose up --build
+#
+# Services:
+#   db        → localhost:5432
+#   api       → localhost:3001
+#   frontend  → localhost:5173  (nginx serving the Vite production build)
 #
 # One-off Prisma:
 #   docker compose run --rm api npx prisma generate
@@ -39,6 +45,18 @@ services:
     depends_on:
       db:
         condition: service_healthy
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+      args:
+        # Baked into the JS bundle — use a host browsers on your LAN can reach
+        VITE_API_BASE_URL: ${PUBLIC_API_BASE_URL:-http://localhost:3001}
+    ports:
+      - "${FRONTEND_PORT:-5173}:80"
+    depends_on:
+      - api
 
 volumes:
   roku_feed_pg:

@@ -34,40 +34,32 @@ Web uses **cookie sessions** (`feed.sid`). Expo and Roku use **bearer tokens**.
 
 ---
 
-## Quick start (merge-ready checklist)
+## Quick start (home server / Docker)
 
-Run these on your machine / home server (not required in CI for this PR).
-
-### 1. Backend
+Run API + Postgres + settings UI together from `backend/`:
 
 ```bash
 cd backend
 cp .env.example .env
-# Set SESSION_SECRET. Optionally RESEND_* for real email (otherwise codes print to the API console).
-# FRONTEND_URL=http://localhost:5173
-# APP_URL=http://localhost:5173   # magic-link landing page
-docker compose up --build
+# For LAN access, set PUBLIC_API_BASE_URL / PUBLIC_FRONTEND_URL to http://<server-ip>:3001 and :5173
+# Also set FRONTEND_URL and APP_URL to that same frontend URL (see .env.example).
+# Set SESSION_SECRET. Optionally RESEND_* for real email (otherwise codes print in API logs).
+docker compose up --build -d
+docker compose logs -f api
 ```
 
-- Health: `GET http://localhost:3001/health`
-- Migrations apply on container start
+| Service | URL |
+|---------|-----|
+| API health | `http://<host>:3001/health` |
+| Settings UI | `http://<host>:5173` |
 
-See [backend/README.md](../backend/README.md) for the full API.
+Migrations apply on API container start.
 
-### 2. Web settings UI
+**Frontend on a laptop instead?** You can still `cd frontend && npm run dev` and point `VITE_API_BASE_URL` at the server API. That works for solo testing. For phones/other PCs on the LAN (and magic links / Roku pairing), serve the UI from Compose on the home server.
 
-```bash
-cd frontend
-cp .env.example .env   # VITE_API_BASE_URL=http://localhost:3001
-npm install
-npm run dev
-```
+See [backend/README.md](../backend/README.md) and [frontend/README.md](../frontend/README.md).
 
-Open `http://localhost:5173` → sign in → set feed URL → link Roku.
-
-See [frontend/README.md](../frontend/README.md).
-
-### 3. Roku channel config
+### Roku channel config
 
 Edit **`roku-app/config/channel.json`** before packaging/sideloading:
 
@@ -85,7 +77,7 @@ Edit **`roku-app/config/channel.json`** before packaging/sideloading:
 
 Package/sideload `roku-app/` as usual. Details: [roku-app/README.md](../roku-app/README.md).
 
-### 4. Link TV ↔ account
+### Link TV ↔ account
 
 1. On Roku: **Options (`*`)** on the grid → **Link Web Account** → note the 6-digit code.
 2. On web (or Expo settings): sign in → **Link a Roku** → enter the code.
