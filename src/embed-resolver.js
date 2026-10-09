@@ -15,8 +15,66 @@ import {
     safeClosePage,
 } from './puppeteer-utils.js';
 
-const PLAY_SELECTORS = ['#player .play-button', '.play-btn', '[aria-label="Play"]', '.jw-video.jw-reset'];
-const PAUSE_SELECTORS = ['[aria-label="Pause"]', '.vjs-playing'];
+const PLAY_SELECTORS = [
+    '#player .play-button',
+    '.play-btn',
+    '[aria-label="Play"]',
+    '.jw-display-icon-container',
+    '.jw-icon-display',
+    '.jw-video.jw-reset',
+    '.vjs-big-play-button',
+    'button.vjs-big-play-button',
+    '.plyr__control--overlaid',
+];
+const PAUSE_SELECTORS = ['[aria-label="Pause"]', '.vjs-playing', '.jw-state-playing'];
+
+/** Ad-heavy embed hosts rarely reach networkidle2 before the 30s timeout. */
+function gotoWaitUntil(embedUrl) {
+    if (/embedsports\.|buffsports\.|matchora\.|sportplus\.|dami-tv\./i.test(embedUrl)) {
+        return 'domcontentloaded';
+    }
+    return 'networkidle2';
+}
+
+async function userAgentForBrowser(browser) {
+    try {
+        const version = await browser.version();
+        const full = (version.match(/(\d+\.\d+\.\d+\.\d+)/) || [])[1];
+        if (full) {
+            return `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${full} Safari/537.36`;
+        }
+    } catch {
+        // fall through
+    }
+    return BROWSER_USER_AGENT;
+}
+
+/** Last-resort nudge when no explicit play control exists (common on embedsports). */
+async function nudgePlayer(page) {
+    try {
+        await page.evaluate(() => {
+            const video = document.querySelector('video');
+            if (video) {
+                try {
+                    video.muted = true;
+                    const playResult = video.play();
+                    if (playResult?.catch) playResult.catch(() => {});
+                } catch {
+                    // ignore autoplay rejection
+                }
+            }
+            document.querySelector('#player, .player, .video-js, .jwplayer')?.click?.();
+        });
+    } catch {
+        // ignore
+    }
+    try {
+        const viewport = page.viewport() || { width: 1280, height: 720 };
+        await page.mouse.click(Math.floor(viewport.width / 2), Math.floor(viewport.height / 2));
+    } catch {
+        // ignore
+    }
+}
 
 async function queryInFrame(frame, selector) {
     try {
@@ -131,7 +189,7 @@ export async function resolveStreamFromEmbed(browser, embedUrl, options = {}) {
     try {
         page = await browser.newPage();
         await page.setCacheEnabled(false);
-        await page.setUserAgent(BROWSER_USER_AGENT);
+        await page.setUserAgent(await userAgentForBrowser(browser));
 
         if (captureManifestBody) {
             attachAdWindowHandler(page, log);
@@ -167,8 +225,9 @@ export async function resolveStreamFromEmbed(browser, embedUrl, options = {}) {
 
         page.on('response', responseListener);
 
+        const waitUntil = gotoWaitUntil(embedUrl);
         log(`-- Navigating to embed URL: ${embedUrl} (Source: ${sourceName})`);
-        await page.goto(embedUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+        await page.goto(embedUrl, { waitUntil, timeout: 45000 });
 
         log('-- Player page loaded. Looking for play button...');
         const clicked = await clickPlayButton(page, log);
@@ -176,10 +235,11 @@ export async function resolveStreamFromEmbed(browser, embedUrl, options = {}) {
             log('-- Play button clicked (or already playing).');
             await new Promise((resolve) => setTimeout(resolve, 3000));
         } else {
-            log('-- No play button found. Waiting for stream to load automatically...');
+            log('-- No play button found. Nudging player / waiting for stream...');
+            await nudgePlayer(page);
         }
 
-        const waitDeadline = Date.now() + 15000;
+        const waitDeadline = Date.now() + 20000;
         while (Date.now() < waitDeadline) {
             if (candidates.some((candidate) => candidate.status === 200)) {
                 break;

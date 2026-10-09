@@ -13,20 +13,37 @@ const MAX_STREAMS_PER_GAME = 5;
 
 /**
  * Providers we know how to turn into playable HLS.
- * onhockey.tv rotated away from fluidtv/brcove toward these labels.
- * Preference order is used when capping streams per game.
+ * Preference order is used when capping streams per game (deep scrape is expensive).
+ *
+ * Live reliability (from home-server deep scrapes):
+ * - mtchor   → matchora.to embeds — consistently yields .m3u8
+ * - fluidtv  → direct m3u8 in ?channel= (rare on English rows, free when present)
+ * - streamd  → embed.st — mixed; often works near puck drop
+ * - plytvme  → embedsports.me — flaky in headless (try after better providers)
+ * - brcove / vodcast → Brightcove playback API
+ *
+ * Intentionally omitted:
+ * - sportpl (sportplus.watch) — full site pages, not embeds; Puppeteer never sees m3u8
+ * - damitv / ddlive / lovecdn / … — common on the schedule but unproven in our resolver
  */
 const PROVIDER_PREFERENCE = [
-    'streamd',  // embed.st — same stack as Streamed.pk
-    'plytvme',  // embedsports / buffsports
-    'mtchor',   // matchora embeds (reliable HLS)
-    'fluidtv',  // direct m3u8 in ?channel=
-    'brcove',   // Brightcove
-    'vodcast',  // Brightcove-style embeds
-    'sportpl',  // sportplus.watch
+    'mtchor',
+    'fluidtv',
+    'streamd',
+    'plytvme',
+    'brcove',
+    'vodcast',
 ];
 
 const ACCEPTED_PROVIDERS = new Set(PROVIDER_PREFERENCE);
+
+/** Titles onhockey sometimes puts on external links — not useful stream names. */
+function cleanStreamName(title, provider) {
+    const trimmed = title?.trim();
+    if (!trimmed) return provider;
+    if (/opens in a new tab/i.test(trimmed)) return provider;
+    return trimmed;
+}
 
 /**
  * Converts a UTC time string (HH:mm) to CST by subtracting 6 hours.
@@ -63,7 +80,7 @@ function extractStreamLinks(gameLinksDiv) {
 
     // Must stay in sync with PROVIDER_PREFERENCE in scraper.js module scope.
     const accepted = new Set([
-        'streamd', 'plytvme', 'mtchor', 'fluidtv', 'brcove', 'vodcast', 'sportpl',
+        'mtchor', 'fluidtv', 'streamd', 'plytvme', 'brcove', 'vodcast',
     ]);
 
     const links = [];
@@ -91,11 +108,12 @@ function extractStreamLinks(gameLinksDiv) {
             if (!provider || !rawUrl || !accepted.has(provider)) return;
 
             const title = anchor.getAttribute('title')?.trim();
+            const junkTitle = title && /opens in a new tab/i.test(title);
             links.push({
                 provider,
                 url: rawUrl,
                 feedType: currentFeedType,
-                name: title || provider,
+                name: (!title || junkTitle) ? provider : title,
             });
         }
 
@@ -762,16 +780,19 @@ async function resolveOnHockeyStream(browser, stream) {
     }
 
     const info = await resolveStreamFromEmbed(browser, target, {
-        sourceName: stream.name || stream.provider,
+        sourceName: cleanStreamName(stream.name, stream.provider),
         verbose: true,
     });
-    if (!info?.streamUrl) return null;
+    if (!info?.streamUrl) {
+        console.log(`  -> No m3u8 from ${stream.provider} (${target.slice(0, 80)})`);
+        return null;
+    }
 
     return {
         ...stream,
         url: info.streamUrl,
         embedUrl: info.embedUrl || target,
-        name: stream.name || stream.provider,
+        name: cleanStreamName(stream.name, stream.provider),
         headers: info.referer ? { Referer: info.referer } : undefined,
         requestHeaders: info.requestHeaders || {},
         directFetchOk: Boolean(info.directFetchOk),
@@ -833,6 +854,18 @@ export async function deepScrapeGames(browser, games) {
     );
 
     const processedGames = results.filter(Boolean);
-    console.log(`Deep scrape complete. Found streams for ${processedGames.length} games.`);
+    const resolvedProviders = {};
+    for (const game of processedGames) {
+        for (const stream of game.streamLinks || []) {
+            resolvedProviders[stream.provider] =
+                (resolvedProviders[stream.provider] || 0) + 1;
+        }
+    }
+    console.log(
+        `Deep scrape complete. Found streams for ${processedGames.length}/${games.length} games` +
+            (Object.keys(resolvedProviders).length
+                ? ` (resolved: ${JSON.stringify(resolvedProviders)})`
+                : '')
+    );
     return processedGames;
 }
