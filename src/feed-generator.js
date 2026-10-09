@@ -30,11 +30,10 @@ export function createFeedItem(game, imageUrl) {
     const videos = game.streamLinks.map(stream => {
         let streamUrl = stream.url;
         
-        // Streamed embeds need a Referer via the LAN proxy. TimStreams (and any
-        // stream that already passed a direct HTTP probe) stay as the raw m3u8 —
-        // TikTok CDN segments 403 from the proxy host but play from the client IP
-        // (same as pasting the URL into VLC / livepush).
-        if (!SKIP_PROXY && stream.headers?.Referer && !stream.directFetchOk) {
+        // Any stream with a Referer goes through the LAN proxy — including TimStreams
+        // (d=1). Roku cannot decode TikTok WebP-TS segments from a raw m3u8; the proxy
+        // unwraps them. d=1 still means "try direct HTTP first" inside the proxy.
+        if (!SKIP_PROXY && stream.headers?.Referer) {
             streamUrl = buildProxyUrl(
                 stream.url,
                 stream.headers.Referer,
@@ -44,8 +43,6 @@ export function createFeedItem(game, imageUrl) {
                 stream.directFetchOk
             );
             console.log(`-- Proxy rewrite: ${stream.url} -> ${streamUrl}`);
-        } else if (stream.directFetchOk) {
-            console.log(`-- Direct URL (d=1 / raw): ${stream.url}`);
         }
         
         // Create a more descriptive quality string with the source name and domain.

@@ -18,7 +18,7 @@ const port = process.env.PORT || 8787;
 const proxyHost = process.env.PROXY_HOST || '192.168.1.50:8787';
 const debug = process.env.PROXY_DEBUG === 'true';
 
-const PROXY_VERSION = 'embed-first-v20-timst-raw';
+const PROXY_VERSION = 'embed-first-v21-timst-unwrap';
 
 // GOAT disguises each MPEG-TS segment as a tiny PNG so it can live on TikTok's
 // image CDN. The real TS payload starts right after the PNG's IEND chunk. Strip
@@ -131,7 +131,7 @@ function logManifestPreview(label, body) {
 console.log(`Starting ADVANCED HLS proxy (${PROXY_VERSION})...`);
 console.log(`  - Chromium mode: ${process.env.PROXY_HEADLESS === 'true' ? 'headless' : 'visible (set PROXY_HEADLESS=true for headless)'}`);
 console.log(`  - Rewriting segment URLs to host: ${proxyHost}`);
-console.log('  - /proxy d=1 (TimStreams): direct HTTP manifest; CDN segment URLs left absolute (client fetches)');
+console.log('  - /proxy d=1 (TimStreams): HTTP first, Chromium fallback for segments; WebP-TS unwrap');
 console.log('  - /proxy otherwise: Puppeteer embed-first (Streamed)');
 
 app.get('/', (req, res) => {
@@ -150,8 +150,8 @@ async function fetchUpstream(streamUrl, { embedUrl, referer, extraHeaders, direc
     const browserOptions = { embedUrl, referer, extraHeaders };
 
     if (directOk) {
-        // Minimal headers: TikTok/junksonus segments often 403 when Origin/Sec-Fetch are set.
-        // Do not fall back to Chromium — that path is for Streamed embeds, not TimStreams.
+        // Manifests usually work with minimal HTTP. TikTok segment URLs often 403
+        // the proxy host — fall back to the open grandemx tab (cookies/UA) then unwrap.
         console.log('  - Fetch mode: direct HTTP (d=1, minimal headers)');
         const httpResponse = await fetchViaHttp(
             streamUrl,
@@ -160,6 +160,20 @@ async function fetchUpstream(streamUrl, { embedUrl, referer, extraHeaders, direc
             isManifestRequest,
             { minimal: true }
         );
+        if (httpResponse.statusCode >= 200 && httpResponse.statusCode < 300) {
+            return { response: httpResponse, mode: 'http' };
+        }
+        if (!isManifestRequest && embedUrl) {
+            console.log(
+                `  - Direct HTTP ${httpResponse.statusCode}; falling back to Chromium for segment`
+            );
+            const browserResponse = await fetchViaBrowser(
+                streamUrl,
+                browserOptions,
+                isManifestRequest
+            );
+            return { response: browserResponse, mode: 'chromium' };
+        }
         return { response: httpResponse, mode: 'http' };
     }
 
@@ -173,12 +187,10 @@ async function resolvePlaybackContext(
     streamUrl,
     feedReferer,
     feedHeaders,
-    feedDirectOk
+    feedDirectOk,
+    { isManifest = false } = {}
 ) {
-    // TimStreams / d=1: feed already verified direct HTTP. No Puppeteer. Manifest
-    // is fetched here with a Referer; segment URLs are left on the CDN so the
-    // client fetches them (TikTok 403s the proxy host; VLC/raw client IP works).
-    if (feedDirectOk || !embedUrl) {
+    if (!embedUrl) {
         return {
             upstreamUrl: streamUrl,
             referer: feedReferer,
@@ -186,7 +198,27 @@ async function resolvePlaybackContext(
             directOk: feedDirectOk,
             manifestBaseUrl: streamUrl,
             resolvedFromEmbed: false,
-            passthroughSegments: Boolean(feedDirectOk),
+        };
+    }
+
+    // TimStreams (d=1): open grandemx once (cached) for a fresh signed m3u8 + cookies.
+    // Segments stay on /proxy so WebP-TS can be unwrapped for Roku; fetch tries HTTP
+    // then Chromium when TikTok 403s the proxy host.
+    if (feedDirectOk) {
+        let stream = getCachedStream(embedUrl);
+        if (!stream) {
+            console.log('  - TimStreams: opening embed for signed m3u8 + segment cookies');
+            stream = await getResolvedStream(embedUrl);
+        }
+        const freshUrl = stream.streamUrl || streamUrl;
+        const useFresh = isManifest && Boolean(stream.streamUrl);
+        return {
+            upstreamUrl: useFresh ? freshUrl : streamUrl,
+            referer: stream.referer || feedReferer,
+            extraHeaders: {},
+            directOk: true,
+            manifestBaseUrl: useFresh ? freshUrl : streamUrl,
+            resolvedFromEmbed: useFresh && stream.streamUrl !== streamUrl,
         };
     }
 
@@ -204,7 +236,6 @@ async function resolvePlaybackContext(
         directOk: stream.directFetchOk,
         manifestBaseUrl: streamUrl,
         resolvedFromEmbed: false,
-        passthroughSegments: false,
     };
 }
 
@@ -238,7 +269,8 @@ app.get('/proxy/*b64Payload', async (req, res) => {
             streamUrl,
             referer,
             extraHeaders,
-            directOk
+            directOk,
+            { isManifest: isManifestRequest }
         );
 
         if (ctx.resolvedFromEmbed) {
@@ -259,7 +291,7 @@ app.get('/proxy/*b64Payload', async (req, res) => {
             isManifestRequest
         ));
 
-        if (response.statusCode >= 300 && isManifestRequest && embedUrl && !directOk) {
+        if (response.statusCode >= 300 && isManifestRequest && embedUrl) {
             console.log(`  - Manifest fetch failed (${response.statusCode}), re-resolving from embed...`);
             clearResolvedStream(embedUrl);
             ctx = await resolvePlaybackContext(
@@ -267,7 +299,8 @@ app.get('/proxy/*b64Payload', async (req, res) => {
                 streamUrl,
                 referer,
                 extraHeaders,
-                directOk
+                directOk,
+                { isManifest: true }
             );
             ({ response, mode } = await fetchUpstream(
                 ctx.upstreamUrl,
@@ -291,6 +324,15 @@ app.get('/proxy/*b64Payload', async (req, res) => {
             if (debug && bodyPreview) {
                 console.error(`  - Response preview: ${bodyPreview}`);
             }
+            if (
+                response.statusCode === 403 &&
+                !isManifestRequest &&
+                directOk &&
+                embedUrl
+            ) {
+                console.log('  - Clearing TimStreams embed cache after segment 403');
+                clearResolvedStream(embedUrl);
+            }
             res.status(response.statusCode).send(`Upstream returned ${response.statusCode}`);
             return;
         }
@@ -309,33 +351,24 @@ app.get('/proxy/*b64Payload', async (req, res) => {
                 return;
             }
 
+            console.log('  - Rewriting manifest segment URLs through /proxy...');
+
             const KEY_TAG = '#EXT-X-KEY:';
             const rewrittenLines = [];
             let segmentCount = 0;
-            const passthrough = Boolean(ctx.passthroughSegments);
-            console.log(
-                passthrough
-                    ? '  - Leaving segment URLs on CDN (client fetches directly)...'
-                    : '  - Rewriting manifest segment URLs through /proxy...'
-            );
-
             for (const line of playlist.split('\n')) {
                 if (line.startsWith(KEY_TAG)) {
                     const uriMatch = line.match(/URI="([^"]+)"/);
                     if (uriMatch?.[1]) {
                         const fullKeyUrl = new URL(uriMatch[1], ctx.manifestBaseUrl).href;
-                        if (passthrough) {
-                            rewrittenLines.push(line.replace(uriMatch[1], fullKeyUrl));
-                        } else {
-                            const proxiedKeyUrl = `http://${proxyHost}/proxy/${buildRewrittenPayload(
-                                fullKeyUrl,
-                                ctx.referer,
-                                ctx.extraHeaders,
-                                embedUrl,
-                                ctx.directOk
-                            )}`;
-                            rewrittenLines.push(line.replace(uriMatch[1], proxiedKeyUrl));
-                        }
+                        const proxiedKeyUrl = `http://${proxyHost}/proxy/${buildRewrittenPayload(
+                            fullKeyUrl,
+                            ctx.referer,
+                            ctx.extraHeaders,
+                            embedUrl,
+                            ctx.directOk
+                        )}`;
+                        rewrittenLines.push(line.replace(uriMatch[1], proxiedKeyUrl));
                         continue;
                     }
                 }
@@ -347,17 +380,13 @@ app.get('/proxy/*b64Payload', async (req, res) => {
                         continue;
                     }
                     const segmentUrl = new URL(trimmed, ctx.manifestBaseUrl).href;
-                    if (passthrough) {
-                        rewrittenLines.push(segmentUrl);
-                    } else {
-                        rewrittenLines.push(`http://${proxyHost}/proxy/${buildRewrittenPayload(
-                            segmentUrl,
-                            ctx.referer,
-                            ctx.extraHeaders,
-                            embedUrl,
-                            ctx.directOk
-                        )}`);
-                    }
+                    rewrittenLines.push(`http://${proxyHost}/proxy/${buildRewrittenPayload(
+                        segmentUrl,
+                        ctx.referer,
+                        ctx.extraHeaders,
+                        embedUrl,
+                        ctx.directOk
+                    )}`);
                     segmentCount++;
                     continue;
                 }
@@ -371,7 +400,7 @@ app.get('/proxy/*b64Payload', async (req, res) => {
                 return;
             }
 
-            console.log(`  - ${passthrough ? 'Normalized' : 'Rewrote'} ${segmentCount} segment URL(s)`);
+            console.log(`  - Rewrote ${segmentCount} segment URL(s)`);
             const rewrittenPlaylist = rewrittenLines.join('\n');
 
             res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
