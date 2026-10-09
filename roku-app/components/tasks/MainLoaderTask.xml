@@ -5,9 +5,6 @@
     <interface>
         <field id="content" type="node" />
         <field id="feedUrl" type="string" />
-        <!-- loading | cached | partial | ready | stale | error -->
-        <field id="status" type="string" alwaysNotify="true" />
-        <field id="message" type="string" alwaysNotify="true" />
     </interface>
 
     <script type="text/brightscript" uri="pkg:/source/utils.brs" />

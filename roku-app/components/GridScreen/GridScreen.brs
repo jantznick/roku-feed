@@ -21,21 +21,9 @@ sub OnVisibleChange() ' invoked when GridScreen change visibility
 end sub
 
 sub OnItemFocused() ' invoked when another item is focused
-    if m.rowList.content = invalid or m.rowList.content.GetChildCount() = 0
-        return
-    end if
     focusedIndex = m.rowList.rowItemFocused ' get position of focused item
-    if focusedIndex = invalid or focusedIndex.Count() < 2
-        return
-    end if
     row = m.rowList.content.GetChild(focusedIndex[0]) ' get all items of row
-    if row = invalid or row.GetChildCount() = 0
-        return
-    end if
     item = row.GetChild(focusedIndex[1]) ' get focused item
-    if item = invalid
-        return
-    end if
     ' update description label with description of focused item
     m.descriptionLabel.text = item.description
     ' update title label with title of focused item

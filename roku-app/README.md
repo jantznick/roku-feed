@@ -17,22 +17,11 @@ Set in **`config/channel.json`** before packaging/sideloading (not editable on t
 ```json
 {
   "apiBaseUrl": "https://api.welikesports.app",
-  "defaultFeedUrl": "https://f004.backblazeb2.com/file/roku-hockey/secretfeedfilename.json",
-  "feedSources": [
-    { "id": "live", "label": "Live Sports & TV" },
-    { "id": "plex", "label": "Plex", "url": "https://your-server/plex-feed.json" }
-  ]
+  "defaultFeedUrl": "https://f004.backblazeb2.com/file/roku-hockey/secretfeedfilename.json"
 }
 ```
 
-`GetApiBaseUrl()` / `GetDefaultFeedUrl()` / `GetFeedSources()` read that file from `pkg:/config/channel.json`.
-
-### Resilient loading
-
-- Each `feedSources` entry is fetched **independently** with a timeout. If Plex (or any source) hangs or fails, Live Sports / Live TV still appear.
-- Sources without a `url` use the account-synced / override / `defaultFeedUrl` chain (`GetFeedUrl()`).
-- Last successful libraries are cached on device and shown **immediately** on launch while a refresh runs in the background.
-- Account sync is best-effort (short timeout) and never blocks the grid.
+`GetApiBaseUrl()` / `GetDefaultFeedUrl()` read that file from `pkg:/config/channel.json`.
 
 ### Link to web account
 

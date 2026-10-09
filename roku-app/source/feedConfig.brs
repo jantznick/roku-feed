@@ -6,10 +6,8 @@
 '   deviceToken      — bearer token after web claim
 '   linkedEmail      — last known account email
 '
-' Package config: pkg:/config/channel.json
-'   (apiBaseUrl, defaultFeedUrl, optional feedSources[]).
+' Package config: pkg:/config/channel.json (apiBaseUrl, defaultFeedUrl).
 ' Edit that file before packaging — not user-configurable on device.
-' Feed sources load independently with timeouts + cachefs stale-while-revalidate.
 
 function FeedRegistry() as Object
     return CreateObject("roRegistrySection", "feed")
@@ -222,155 +220,13 @@ function ParseJsonResponse(body as String) as Object
     return ParseJson(body)
 end function
 
-' HTTP GET with a hard timeout so one hung host cannot freeze the channel.
-' Returns body string on success, otherwise "".
-function HttpGetWithTimeout(url as String, timeoutMs = 15000 as Integer) as String
-    if url = invalid or url = ""
-        return ""
-    end if
-    if timeoutMs <= 0
-        timeoutMs = 15000
-    end if
-
-    xfer = CreateObject("roURLTransfer")
-    xfer.SetCertificatesFile("common:/certs/ca-bundle.crt")
-    xfer.InitClientCertificates()
-    xfer.SetURL(url)
-    xfer.AddHeader("Accept", "application/json")
-    port = CreateObject("roMessagePort")
-    xfer.SetMessagePort(port)
-
-    if not xfer.AsyncGetToString()
-        return ""
-    end if
-
-    msg = wait(timeoutMs, port)
-    if msg = invalid
-        xfer.AsyncCancel()
-        return ""
-    end if
-    if type(msg) <> "roUrlEvent"
-        xfer.AsyncCancel()
-        return ""
-    end if
-
-    code = msg.GetResponseCode()
-    body = msg.GetString()
-    if code < 200 or code >= 300
-        return ""
-    end if
-    if body = invalid
-        return ""
-    end if
-    return body
-end function
-
-function HttpGetJsonWithTimeout(url as String, timeoutMs = 15000 as Integer) as Object
-    return ParseJsonResponse(HttpGetWithTimeout(url, timeoutMs))
-end function
-
-' Feed sources from channel.json feedSources[], or a single default source.
-' Sources without an explicit url use GetFeedUrl() (account sync / override / default).
-' Each source loads independently — one failure must not block the others.
-function GetFeedSources() as Object
-    sources = []
-    config = LoadChannelConfig()
-    configured = invalid
-    if config <> invalid
-        configured = config.feedSources
-    end if
-
-    if Type(configured) = "roArray" and configured.Count() > 0
-        for each entry in configured
-            if entry <> invalid
-                id = entry.id
-                if id = invalid or id = ""
-                    id = "source"
-                end if
-                label = entry.label
-                if label = invalid or label = ""
-                    label = id
-                end if
-                url = ""
-                if entry.url <> invalid and entry.url <> ""
-                    url = entry.url
-                else
-                    url = GetFeedUrl()
-                end if
-                if IsValidFeedUrl(url)
-                    timeoutMs = 20000
-                    if entry.timeoutMs <> invalid
-                        timeoutMs = entry.timeoutMs
-                    end if
-                    sources.Push({
-                        id: id,
-                        label: label,
-                        url: url,
-                        timeoutMs: timeoutMs
-                    })
-                end if
-            end if
-        end for
-    end if
-
-    if sources.Count() = 0
-        sources.Push({
-            id: "live",
-            label: "Live",
-            url: GetFeedUrl(),
-            timeoutMs: 20000
-        })
-    end if
-    return sources
-end function
-
-function FeedCachePath(sourceId as String) as String
-    safeId = sourceId
-    if safeId = invalid or safeId = ""
-        safeId = "main"
-    end if
-    return "cachefs:/wls-feed-" + safeId + ".json"
-end function
-
-function LoadFeedCache(sourceId as String) as Object
-    path = FeedCachePath(sourceId)
-    raw = ReadAsciiFile(path)
-    return ParseJsonResponse(raw)
-end function
-
-function SaveFeedCache(sourceId as String, body as String) as Boolean
-    if body = invalid or body = ""
-        return false
-    end if
-    path = FeedCachePath(sourceId)
-    return WriteAsciiFile(path, body)
-end function
-
-function LoadMergedFeedCache() as Object
-    return LoadFeedCache("merged")
-end function
-
-function SaveMergedFeedCache(json as Object) as Boolean
-    if json = invalid
-        return false
-    end if
-    body = FormatJson(json)
-    if body = invalid or body = ""
-        return false
-    end if
-    return SaveFeedCache("merged", body)
-end function
-
 ' Pull effectiveFeedUrl from backend when linked. Returns true if sync updated URL.
-' Uses a short timeout so a dead API cannot block Live TV / sports / other sources.
-function SyncFeedFromAccount(timeoutMs = 5000 as Integer) as Boolean
+' Short timeout so a dead API cannot block channel load.
+function SyncFeedFromAccount() as Boolean
     apiBase = GetApiBaseUrl()
     token = GetDeviceAccessToken()
     if apiBase = "" or token = ""
         return false
-    end if
-    if timeoutMs <= 0
-        timeoutMs = 5000
     end if
 
     xfer = CreateJsonTransfer(apiBase + "/device/settings")
@@ -380,7 +236,7 @@ function SyncFeedFromAccount(timeoutMs = 5000 as Integer) as Boolean
     if not xfer.AsyncGetToString()
         return false
     end if
-    msg = wait(timeoutMs, port)
+    msg = wait(5000, port)
     if msg = invalid or type(msg) <> "roUrlEvent"
         xfer.AsyncCancel()
         return false
