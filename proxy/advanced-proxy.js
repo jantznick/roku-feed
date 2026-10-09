@@ -18,7 +18,7 @@ const port = process.env.PORT || 8787;
 const proxyHost = process.env.PROXY_HOST || '192.168.1.50:8787';
 const debug = process.env.PROXY_DEBUG === 'true';
 
-const PROXY_VERSION = 'embed-first-v16-webp-ts';
+const PROXY_VERSION = 'embed-first-v17-direct-ok';
 
 // GOAT disguises each MPEG-TS segment as a tiny PNG so it can live on TikTok's
 // image CDN. The real TS payload starts right after the PNG's IEND chunk. Strip
@@ -165,7 +165,10 @@ async function fetchUpstream(streamUrl, { embedUrl, referer, extraHeaders, direc
 }
 
 async function resolvePlaybackContext(embedUrl, streamUrl, feedReferer, feedHeaders, feedDirectOk) {
-    if (!embedUrl) {
+    // TimStreams (and any d=1 feed URL): scrape already verified direct HTTP.
+    // Skip Puppeteer embed open — Docker often has no host Chrome path, and the
+    // CDN plays with Referer alone (same as pasting the raw m3u8 in a browser).
+    if (feedDirectOk || !embedUrl) {
         return {
             upstreamUrl: streamUrl,
             referer: feedReferer,
@@ -176,13 +179,8 @@ async function resolvePlaybackContext(embedUrl, streamUrl, feedReferer, feedHead
         };
     }
 
-    // Ensure the embed player is open/resolved (gives us referer + headers and
-    // keeps the live manifest capture running). After that we always honor the
-    // exact URL the client asked for: manifest bodies are served from the live
-    // embed-player capture matched by filename (playlist.m3u8 vs mono.m3u8), and
-    // segments are absolute CDN URLs. This preserves the embed's own URL
-    // hierarchy so live reloads stay consistent instead of flip-flopping between
-    // master and media playlists.
+    // Streamed embeds: keep the player open/resolved (referer + headers and live
+    // manifest capture). Always honor the exact URL the client asked for.
     let stream = getCachedStream(embedUrl);
     if (!stream) {
         stream = await getResolvedStream(embedUrl);

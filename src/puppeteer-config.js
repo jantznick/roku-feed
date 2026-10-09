@@ -14,8 +14,11 @@ function applyStealth() {
 
 /** Prefer a real Chrome binary when present (passes CF more often than bundled Chromium). */
 function resolveChromeExecutable() {
-    if (process.env.PUPPETEER_EXECUTABLE_PATH) {
-        return process.env.PUPPETEER_EXECUTABLE_PATH;
+    // Host .env often sets this for the scraper; Docker compose may inject it even
+    // though the binary is not inside the container. Only honor paths that exist.
+    const fromEnv = process.env.PUPPETEER_EXECUTABLE_PATH?.trim();
+    if (fromEnv && fs.existsSync(fromEnv)) {
+        return fromEnv;
     }
     const candidates = [
         '/usr/bin/google-chrome-stable',
