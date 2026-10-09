@@ -1,6 +1,5 @@
 import 'dotenv/config';
-import puppeteer from 'puppeteer';
-import { getPuppeteerLaunchOptions, describePuppeteerMode } from './puppeteer-config.js';
+import { launchBrowser, describePuppeteerMode } from './puppeteer-config.js';
 import fs from 'fs/promises';
 import path from 'path';
 import { scrapeMainPage, deepScrapeGames } from './scraper.js';
@@ -113,8 +112,8 @@ async function main() {
   console.log(`- EMBED CONCURRENCY: ${getEmbedConcurrency()}`);
   console.log('-------------------------');
 
-  const browser = await puppeteer.launch(getPuppeteerLaunchOptions());
-  console.log(`- Chromium: ${describePuppeteerMode()}`);
+  const browser = await launchBrowser();
+  console.log(`- Browser: ${describePuppeteerMode()}`);
 
   try {
     // 1. Get the previous feed, which serves as our cache

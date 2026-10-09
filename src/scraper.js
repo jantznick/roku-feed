@@ -1,10 +1,12 @@
 import fs from 'fs/promises';
+import path from 'path';
 import { safeClosePage, isBrowserConnected } from './puppeteer-utils.js';
 import { mapPool, getEmbedConcurrency } from './async-pool.js';
 import { resolveStreamFromEmbed } from './embed-resolver.js';
 
 const SCRAPER_URL = "https://onhockey.tv/";
 const DEBUG_FILE_PATH = "debug-output.html";
+const CF_COOKIE_PATH = path.resolve(process.cwd(), 'data', 'onhockey-cf-cookies.json');
 
 /** Max resolved streams to keep per onhockey game (mirrors Streamed.pk). */
 const MAX_STREAMS_PER_GAME = 5;
@@ -160,8 +162,13 @@ function unwrapOnHockeyTarget(href) {
     }
 }
 
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
- * Apply stealth-ish defaults before hitting Cloudflare-fronted pages.
+ * Apply browser defaults before hitting Cloudflare-fronted pages.
+ * Stealth plugin is applied at launch; this adds locale/timezone realism.
  * @param {import('puppeteer').Page} page
  */
 async function prepareOnHockeyPage(page) {
@@ -170,46 +177,146 @@ async function prepareOnHockeyPage(page) {
     );
     await page.setExtraHTTPHeaders({
         'Accept-Language': 'en-US,en;q=0.9',
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
     });
-    await page.evaluateOnNewDocument(() => {
-        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+    try {
+        await page.emulateTimezone('America/Chicago');
+    } catch {
+        // timezone API unavailable in some Chromium builds
+    }
+}
+
+/**
+ * Reuse Cloudflare clearance cookies from a previous successful scrape.
+ * @param {import('puppeteer').Page} page
+ */
+async function loadSavedCfCookies(page) {
+    try {
+        const raw = await fs.readFile(CF_COOKIE_PATH, 'utf8');
+        const cookies = JSON.parse(raw);
+        if (!Array.isArray(cookies) || cookies.length === 0) return false;
+        await page.setCookie(...cookies);
+        console.log(`Loaded ${cookies.length} saved onhockey cookie(s) from ${path.basename(CF_COOKIE_PATH)}`);
+        return true;
+    } catch (error) {
+        if (error.code !== 'ENOENT') {
+            console.warn(`Could not load onhockey cookies: ${error.message}`);
+        }
+        return false;
+    }
+}
+
+/**
+ * Persist cookies after a successful schedule load (cf_clearance, etc.).
+ * @param {import('puppeteer').Page} page
+ */
+async function saveCfCookies(page) {
+    try {
+        const cookies = await page.cookies(SCRAPER_URL);
+        if (cookies.length === 0) return;
+        await fs.mkdir(path.dirname(CF_COOKIE_PATH), { recursive: true });
+        await fs.writeFile(CF_COOKIE_PATH, JSON.stringify(cookies, null, 2), 'utf8');
+        const cleared = cookies.some((c) => c.name === 'cf_clearance');
+        console.log(
+            `Saved ${cookies.length} onhockey cookie(s)` +
+                (cleared ? ' (includes cf_clearance)' : '')
+        );
+    } catch (error) {
+        console.warn(`Could not save onhockey cookies: ${error.message}`);
+    }
+}
+
+/**
+ * Snapshot whether we are still on a Cloudflare challenge page.
+ * @param {import('puppeteer').Page} page
+ */
+async function getChallengeState(page) {
+    return page.evaluate(() => {
+        const title = (document.title || '').toLowerCase();
+        const bodyText = (document.body?.innerText || '').slice(0, 500).toLowerCase();
+        const hasTable = Boolean(document.querySelector('#gametable'));
+        const challengeUi = Boolean(
+            document.querySelector(
+                '#challenge-form, #cf-challenge-running, .cf-browser-verification, iframe[src*="challenges.cloudflare.com"]'
+            )
+        );
+        const justAMoment =
+            title.includes('just a moment') ||
+            bodyText.includes('just a moment') ||
+            bodyText.includes('checking your browser') ||
+            bodyText.includes('verify you are human');
+        return { title: document.title || '', hasTable, challengeUi, justAMoment, url: location.href };
     });
 }
 
 /**
- * Wait until the real schedule table is present (not a Cloudflare interstitial).
- * The old schedule_table_eng.php AJAX endpoint now 404s; schedule HTML is inlined
- * in the homepage, but CF challenges still delay #gametable.
+ * Wait until #gametable appears, giving Cloudflare time to finish its JS challenge.
+ * Polls so we can log progress instead of a silent 90s hang.
  * @param {import('puppeteer').Page} page
  * @param {number} [timeoutMs]
  */
-async function waitForGameTable(page, timeoutMs = 90000) {
-    await page.waitForFunction(
-        () => {
-            const title = (document.title || '').toLowerCase();
-            if (title.includes('just a moment')) return false;
-            if (document.querySelector('#challenge-form, #cf-challenge-running')) return false;
-            return Boolean(document.querySelector('#gametable'));
-        },
-        { timeout: timeoutMs }
+async function waitForGameTable(page, timeoutMs = 120000) {
+    const deadline = Date.now() + timeoutMs;
+    let lastLog = 0;
+
+    while (Date.now() < deadline) {
+        const state = await getChallengeState(page);
+        if (state.hasTable && !state.justAMoment) {
+            return state;
+        }
+
+        const now = Date.now();
+        if (now - lastLog > 10000) {
+            lastLog = now;
+            const secs = Math.round((timeoutMs - (deadline - now)) / 1000);
+            console.log(
+                `  … waiting for onhockey schedule (${secs}s)` +
+                    ` title="${state.title}" challenge=${state.justAMoment || state.challengeUi}`
+            );
+        }
+
+        // Tiny mouse nudge — some CF bots look for input events during the challenge.
+        try {
+            await page.mouse.move(120 + Math.random() * 40, 160 + Math.random() * 40);
+        } catch {
+            // ignore
+        }
+
+        await sleep(1500);
+    }
+
+    const finalState = await getChallengeState(page).catch(() => ({}));
+    throw new Error(
+        `Timed out waiting for #gametable` +
+            (finalState.title ? ` (title="${finalState.title}")` : '')
     );
 }
 
 /**
- * Load onhockey homepage and wait for #gametable, with one CF retry.
+ * Load onhockey homepage and wait for #gametable, with CF retries + cookie reuse.
  * @param {import('puppeteer').Page} page
  */
 async function navigateToOnHockeySchedule(page) {
-    const attempts = 2;
+    const attempts = 3;
     let lastError;
+
+    await loadSavedCfCookies(page);
 
     for (let attempt = 1; attempt <= attempts; attempt++) {
         try {
             console.log(
                 `Navigating to ${SCRAPER_URL} (attempt ${attempt}/${attempts})...`
             );
-            await page.goto(SCRAPER_URL, { waitUntil: 'domcontentloaded', timeout: 90000 });
-            await waitForGameTable(page, 90000);
+            await page.goto(SCRAPER_URL, {
+                waitUntil: 'domcontentloaded',
+                timeout: 90000,
+                referer: 'https://www.google.com/',
+            });
+
+            // Let the challenge script start before we poll.
+            await sleep(2000 + Math.random() * 1500);
+            await waitForGameTable(page, 120000);
+            await saveCfCookies(page);
             return;
         } catch (error) {
             lastError = error;
@@ -225,8 +332,20 @@ async function navigateToOnHockeySchedule(page) {
                 `onhockey load attempt ${attempt} failed: ${error.message}` +
                     (title || url ? ` (title="${title}" url=${url})` : '')
             );
+
+            // Drop stale clearance cookies before the next try.
             if (attempt < attempts) {
-                await new Promise((r) => setTimeout(r, 3000));
+                try {
+                    const cookies = await page.cookies(SCRAPER_URL);
+                    for (const cookie of cookies) {
+                        if (cookie.name === 'cf_clearance' || cookie.name.startsWith('__cf')) {
+                            await page.deleteCookie(cookie);
+                        }
+                    }
+                } catch {
+                    // ignore
+                }
+                await sleep(4000 * attempt);
             }
         }
     }
