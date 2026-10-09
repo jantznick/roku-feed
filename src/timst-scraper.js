@@ -4,6 +4,9 @@
  * Channel catalog: GET https://timst.top/api/channels
  * Stream wrappers: https://grandemx.org/<id> → JW Player with a signed .m3u8
  *
+ * Feed sections: Sports → "24/7 Channels", Entertainment → "Entertainment",
+ * Cartoons → "Cartoons". Catalog logos are used as Roku posters.
+ *
  * The CDN often 404s from datacenter IPs; we still capture the signed URL +
  * Referer so the LAN proxy / home IP can fetch it (same pattern as Streamed).
  */
