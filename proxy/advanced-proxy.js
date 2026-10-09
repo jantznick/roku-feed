@@ -18,7 +18,7 @@ const port = process.env.PORT || 8787;
 const proxyHost = process.env.PROXY_HOST || '192.168.1.50:8787';
 const debug = process.env.PROXY_DEBUG === 'true';
 
-const PROXY_VERSION = 'embed-first-v17-direct-ok';
+const PROXY_VERSION = 'embed-first-v18-timst-direct';
 
 // GOAT disguises each MPEG-TS segment as a tiny PNG so it can live on TikTok's
 // image CDN. The real TS payload starts right after the PNG's IEND chunk. Strip
@@ -131,8 +131,8 @@ function logManifestPreview(label, body) {
 console.log(`Starting ADVANCED HLS proxy (${PROXY_VERSION})...`);
 console.log(`  - Chromium mode: ${process.env.PROXY_HEADLESS === 'true' ? 'headless' : 'visible (set PROXY_HEADLESS=true for headless)'}`);
 console.log(`  - Rewriting segment URLs to host: ${proxyHost}`);
-console.log('  - First manifest hit per embed: Puppeteer opens embed page and captures fresh m3u8');
-console.log('  - Feed payload u/r/h are hints only; proxy resolves live from embed (e)');
+console.log('  - /proxy d=1: direct HTTP only (TimStreams) — no Puppeteer');
+console.log('  - /proxy otherwise: Puppeteer embed-first (Streamed)');
 
 app.get('/', (req, res) => {
     res.send('Proxy server is running (embed-first stream resolve)');
@@ -150,16 +150,20 @@ async function fetchUpstream(streamUrl, { embedUrl, referer, extraHeaders, direc
     const browserOptions = { embedUrl, referer, extraHeaders };
 
     if (directOk) {
-        console.log('  - Fetch mode: direct HTTP (d=1)');
-        const httpResponse = await fetchViaHttp(streamUrl, referer, extraHeaders, isManifestRequest);
-        if (httpResponse.statusCode >= 200 && httpResponse.statusCode < 300) {
-            return { response: httpResponse, mode: 'http' };
-        }
-        console.log(`  - Direct HTTP returned ${httpResponse.statusCode}, falling back to Chromium...`);
-    } else {
-        console.log('  - Fetch mode: Chromium');
+        // Minimal headers: TikTok/junksonus segments often 403 when Origin/Sec-Fetch are set.
+        // Do not fall back to Chromium — that path is for Streamed embeds, not TimStreams.
+        console.log('  - Fetch mode: direct HTTP (d=1, minimal headers)');
+        const httpResponse = await fetchViaHttp(
+            streamUrl,
+            referer,
+            extraHeaders,
+            isManifestRequest,
+            { minimal: true }
+        );
+        return { response: httpResponse, mode: 'http' };
     }
 
+    console.log('  - Fetch mode: Chromium');
     const browserResponse = await fetchViaBrowser(streamUrl, browserOptions, isManifestRequest);
     return { response: browserResponse, mode: 'chromium' };
 }
