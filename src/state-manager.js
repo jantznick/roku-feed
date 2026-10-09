@@ -82,8 +82,24 @@ export function indexFeedItemsById(feed) {
  * @param {object} previousItem
  * @returns {boolean}
  */
+function feedVideosUseProxy(previousItem) {
+    const videos = previousItem?.content?.videos;
+    if (!Array.isArray(videos)) {
+        return false;
+    }
+    return videos.some((video) => typeof video?.url === 'string' && video.url.includes('/proxy/'));
+}
+
 function gameNeedsUpdate(currentGame, previousItem) {
     if (previousItem.title !== currentGame.name) {
+        return true;
+    }
+
+    // TimStreams (and any directFetchOk stream): createFeedItem now writes raw
+    // m3u8 URLs. Unchanged items keep the previous feed JSON as-is, so force an
+    // update once while old /proxy/… entries are still present.
+    const wantsDirectUrl = (currentGame.streamLinks || []).some((s) => s.directFetchOk);
+    if (wantsDirectUrl && feedVideosUseProxy(previousItem)) {
         return true;
     }
 
