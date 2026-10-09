@@ -13,6 +13,8 @@
   "dependencies": {
     "@warren-bank/hls-proxy": "github:warren-bank/HLS-Proxy#v03",
     "express": "^5.1.0",
-    "puppeteer": "^24.43.1"
+    "puppeteer": "^24.43.1",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
   }
 }
