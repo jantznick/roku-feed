@@ -25,6 +25,9 @@ services:
       PROXY_HOST: "${PROXY_HOST:-192.168.1.50:8787}"
       PROXY_DEBUG: "${PROXY_DEBUG:-false}"
       PROXY_BROWSER_IDLE_MS: "${PROXY_BROWSER_IDLE_MS:-600000}"
+      # Host .env may set this for the scraper; that binary is not in the image.
+      # Empty → Puppeteer uses its bundled Chromium inside the container.
+      PUPPETEER_EXECUTABLE_PATH: ""
     # Chromium needs more than Docker's default 64MB /dev/shm
     shm_size: "1gb"
     restart: unless-stopped
