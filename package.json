@@ -19,7 +19,7 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.922.0",
+    "@aws-sdk/client-s3": "^3.987.0",
     "dotenv": "^17.2.3",
     "fuse.js": "^7.1.0",
     "node-vibrant": "^4.0.3",
