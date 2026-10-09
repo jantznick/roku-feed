@@ -128,9 +128,19 @@ async function main() {
     // Index early so Streamed/24/7 can skip Puppeteer for still-fresh games.
     const previousByIdForReuse = indexFeedItemsById(feed);
 
-    // 2. Scrape for games
+    // 2. Scrape for games (each source is isolated — one failure must not abort the run)
     const skipOnHockey = process.env.SKIP_ONHOCKEY === 'true';
-    const onHockeyGames = skipOnHockey ? [] : await scrapeMainPage(browser);
+    let onHockeyGames = [];
+    if (!skipOnHockey) {
+      try {
+        onHockeyGames = await scrapeMainPage(browser);
+      } catch (error) {
+        console.error(
+          `onhockey.tv scrape failed (continuing with other sources): ${error.message}`
+        );
+        onHockeyGames = [];
+      }
+    }
 
     // USA-centric sports on Streamed.pk (hockey also covered by onhockey.tv above)
     const sportsCategories = [
@@ -141,9 +151,27 @@ async function main() {
       'motor-sports',
       'football'
     ];
-    const streamedGames = await scrapeStreamedGames(browser, sportsCategories, previousByIdForReuse);
-    const channels247 = await scrape247Channels(browser, previousByIdForReuse);
-    const timstChannels = await scrapeTimstChannels(browser, previousByIdForReuse);
+
+    let streamedGames = [];
+    try {
+      streamedGames = await scrapeStreamedGames(browser, sportsCategories, previousByIdForReuse);
+    } catch (error) {
+      console.error(`Streamed.pk scrape failed (continuing): ${error.message}`);
+    }
+
+    let channels247 = [];
+    try {
+      channels247 = await scrape247Channels(browser, previousByIdForReuse);
+    } catch (error) {
+      console.error(`Streamed 24/7 scrape failed (continuing): ${error.message}`);
+    }
+
+    let timstChannels = [];
+    try {
+      timstChannels = await scrapeTimstChannels(browser, previousByIdForReuse);
+    } catch (error) {
+      console.error(`TimStreams scrape failed (continuing): ${error.message}`);
+    }
 
     // Combine the games from all sources
     const allCurrentGames = [...onHockeyGames, ...streamedGames, ...channels247, ...timstChannels];

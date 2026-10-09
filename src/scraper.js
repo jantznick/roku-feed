@@ -181,16 +181,57 @@ async function prepareOnHockeyPage(page) {
  * The old schedule_table_eng.php AJAX endpoint now 404s; schedule HTML is inlined
  * in the homepage, but CF challenges still delay #gametable.
  * @param {import('puppeteer').Page} page
+ * @param {number} [timeoutMs]
  */
-async function waitForGameTable(page) {
+async function waitForGameTable(page, timeoutMs = 90000) {
     await page.waitForFunction(
         () => {
             const title = (document.title || '').toLowerCase();
             if (title.includes('just a moment')) return false;
+            if (document.querySelector('#challenge-form, #cf-challenge-running')) return false;
             return Boolean(document.querySelector('#gametable'));
         },
-        { timeout: 90000 }
+        { timeout: timeoutMs }
     );
+}
+
+/**
+ * Load onhockey homepage and wait for #gametable, with one CF retry.
+ * @param {import('puppeteer').Page} page
+ */
+async function navigateToOnHockeySchedule(page) {
+    const attempts = 2;
+    let lastError;
+
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+        try {
+            console.log(
+                `Navigating to ${SCRAPER_URL} (attempt ${attempt}/${attempts})...`
+            );
+            await page.goto(SCRAPER_URL, { waitUntil: 'domcontentloaded', timeout: 90000 });
+            await waitForGameTable(page, 90000);
+            return;
+        } catch (error) {
+            lastError = error;
+            let title = '';
+            let url = '';
+            try {
+                title = await page.title();
+                url = page.url();
+            } catch {
+                // page may already be dead
+            }
+            console.warn(
+                `onhockey load attempt ${attempt} failed: ${error.message}` +
+                    (title || url ? ` (title="${title}" url=${url})` : '')
+            );
+            if (attempt < attempts) {
+                await new Promise((r) => setTimeout(r, 3000));
+            }
+        }
+    }
+
+    throw lastError;
 }
 
 /**
@@ -209,10 +250,8 @@ export async function scrapeMainPage(browser) {
             await page.setContent(fileContent);
             console.log(`Loaded content from ${DEBUG_FILE_PATH}`);
         } else {
-            console.log(`Navigating to ${SCRAPER_URL}...`);
             await prepareOnHockeyPage(page);
-            await page.goto(SCRAPER_URL, { waitUntil: "domcontentloaded", timeout: 90000 });
-            await waitForGameTable(page);
+            await navigateToOnHockeySchedule(page);
             console.log("Page loaded.");
 
             // Save the HTML content for debugging purposes
