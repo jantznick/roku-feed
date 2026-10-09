@@ -51,6 +51,9 @@ ENV PROXY_HEADLESS=true
 ENV PORT=8787
 # Override at runtime to your LAN IP:port clients use
 ENV PROXY_HOST=192.168.1.50:8787
+# Shared src/ (e.g. puppeteer-config.js) resolves packages from /app, not /app/proxy.
+# Point Node at the proxy install so puppeteer / puppeteer-extra are found.
+ENV NODE_PATH=/app/proxy/node_modules
 
 WORKDIR /app/proxy
 EXPOSE 8787
