@@ -18,7 +18,7 @@ const port = process.env.PORT || 8787;
 const proxyHost = process.env.PROXY_HOST || '192.168.1.50:8787';
 const debug = process.env.PROXY_DEBUG === 'true';
 
-const PROXY_VERSION = 'embed-first-v19-timst-refresh';
+const PROXY_VERSION = 'embed-first-v20-timst-raw';
 
 // GOAT disguises each MPEG-TS segment as a tiny PNG so it can live on TikTok's
 // image CDN. The real TS payload starts right after the PNG's IEND chunk. Strip
@@ -131,7 +131,7 @@ function logManifestPreview(label, body) {
 console.log(`Starting ADVANCED HLS proxy (${PROXY_VERSION})...`);
 console.log(`  - Chromium mode: ${process.env.PROXY_HEADLESS === 'true' ? 'headless' : 'visible (set PROXY_HEADLESS=true for headless)'}`);
 console.log(`  - Rewriting segment URLs to host: ${proxyHost}`);
-console.log('  - /proxy d=1 (TimStreams): refresh signed m3u8 from embed once; segments stay direct HTTP');
+console.log('  - /proxy d=1 (TimStreams): direct HTTP manifest; CDN segment URLs left absolute (client fetches)');
 console.log('  - /proxy otherwise: Puppeteer embed-first (Streamed)');
 
 app.get('/', (req, res) => {
@@ -173,10 +173,12 @@ async function resolvePlaybackContext(
     streamUrl,
     feedReferer,
     feedHeaders,
-    feedDirectOk,
-    { isManifest = false } = {}
+    feedDirectOk
 ) {
-    if (!embedUrl) {
+    // TimStreams / d=1: feed already verified direct HTTP. No Puppeteer. Manifest
+    // is fetched here with a Referer; segment URLs are left on the CDN so the
+    // client fetches them (TikTok 403s the proxy host; VLC/raw client IP works).
+    if (feedDirectOk || !embedUrl) {
         return {
             upstreamUrl: streamUrl,
             referer: feedReferer,
@@ -184,38 +186,7 @@ async function resolvePlaybackContext(
             directOk: feedDirectOk,
             manifestBaseUrl: streamUrl,
             resolvedFromEmbed: false,
-        };
-    }
-
-    // TimStreams (d=1): junksonus playlists often stay HTTP 200 after TikTok segment
-    // signatures expire (x-expires) → every .image segment 403s. On the first
-    // manifest hit, resolve a fresh signed m3u8 from the grandemx embed (cached).
-    // Segments still go through /proxy so WebP-TS can be unwrapped for Roku/VLC.
-    if (feedDirectOk) {
-        if (!isManifest) {
-            return {
-                upstreamUrl: streamUrl,
-                referer: feedReferer,
-                extraHeaders: feedHeaders,
-                directOk: true,
-                manifestBaseUrl: streamUrl,
-                resolvedFromEmbed: false,
-            };
-        }
-
-        let stream = getCachedStream(embedUrl);
-        if (!stream) {
-            console.log('  - TimStreams: refreshing signed m3u8 from embed (once, then cached)');
-            stream = await getResolvedStream(embedUrl);
-        }
-        const freshUrl = stream.streamUrl || streamUrl;
-        return {
-            upstreamUrl: freshUrl,
-            referer: stream.referer || feedReferer,
-            extraHeaders: {},
-            directOk: true,
-            manifestBaseUrl: freshUrl,
-            resolvedFromEmbed: Boolean(stream.streamUrl && stream.streamUrl !== streamUrl),
+            passthroughSegments: Boolean(feedDirectOk),
         };
     }
 
@@ -233,6 +204,7 @@ async function resolvePlaybackContext(
         directOk: stream.directFetchOk,
         manifestBaseUrl: streamUrl,
         resolvedFromEmbed: false,
+        passthroughSegments: false,
     };
 }
 
@@ -266,8 +238,7 @@ app.get('/proxy/*b64Payload', async (req, res) => {
             streamUrl,
             referer,
             extraHeaders,
-            directOk,
-            { isManifest: isManifestRequest }
+            directOk
         );
 
         if (ctx.resolvedFromEmbed) {
@@ -288,7 +259,7 @@ app.get('/proxy/*b64Payload', async (req, res) => {
             isManifestRequest
         ));
 
-        if (response.statusCode >= 300 && isManifestRequest && embedUrl) {
+        if (response.statusCode >= 300 && isManifestRequest && embedUrl && !directOk) {
             console.log(`  - Manifest fetch failed (${response.statusCode}), re-resolving from embed...`);
             clearResolvedStream(embedUrl);
             ctx = await resolvePlaybackContext(
@@ -296,8 +267,7 @@ app.get('/proxy/*b64Payload', async (req, res) => {
                 streamUrl,
                 referer,
                 extraHeaders,
-                directOk,
-                { isManifest: true }
+                directOk
             );
             ({ response, mode } = await fetchUpstream(
                 ctx.upstreamUrl,
@@ -321,17 +291,6 @@ app.get('/proxy/*b64Payload', async (req, res) => {
             if (debug && bodyPreview) {
                 console.error(`  - Response preview: ${bodyPreview}`);
             }
-            // Stale TikTok signatures: drop cached TimStreams resolve so the next
-            // playlist request re-opens grandemx for a fresh signed m3u8.
-            if (
-                response.statusCode === 403 &&
-                !isManifestRequest &&
-                directOk &&
-                embedUrl
-            ) {
-                console.log('  - Clearing TimStreams embed cache after segment 403');
-                clearResolvedStream(embedUrl);
-            }
             res.status(response.statusCode).send(`Upstream returned ${response.statusCode}`);
             return;
         }
@@ -350,24 +309,33 @@ app.get('/proxy/*b64Payload', async (req, res) => {
                 return;
             }
 
-            console.log('  - Rewriting manifest segment URLs...');
-
             const KEY_TAG = '#EXT-X-KEY:';
             const rewrittenLines = [];
             let segmentCount = 0;
+            const passthrough = Boolean(ctx.passthroughSegments);
+            console.log(
+                passthrough
+                    ? '  - Leaving segment URLs on CDN (client fetches directly)...'
+                    : '  - Rewriting manifest segment URLs through /proxy...'
+            );
+
             for (const line of playlist.split('\n')) {
                 if (line.startsWith(KEY_TAG)) {
                     const uriMatch = line.match(/URI="([^"]+)"/);
                     if (uriMatch?.[1]) {
                         const fullKeyUrl = new URL(uriMatch[1], ctx.manifestBaseUrl).href;
-                        const proxiedKeyUrl = `http://${proxyHost}/proxy/${buildRewrittenPayload(
-                            fullKeyUrl,
-                            ctx.referer,
-                            ctx.extraHeaders,
-                            embedUrl,
-                            ctx.directOk
-                        )}`;
-                        rewrittenLines.push(line.replace(uriMatch[1], proxiedKeyUrl));
+                        if (passthrough) {
+                            rewrittenLines.push(line.replace(uriMatch[1], fullKeyUrl));
+                        } else {
+                            const proxiedKeyUrl = `http://${proxyHost}/proxy/${buildRewrittenPayload(
+                                fullKeyUrl,
+                                ctx.referer,
+                                ctx.extraHeaders,
+                                embedUrl,
+                                ctx.directOk
+                            )}`;
+                            rewrittenLines.push(line.replace(uriMatch[1], proxiedKeyUrl));
+                        }
                         continue;
                     }
                 }
@@ -379,13 +347,17 @@ app.get('/proxy/*b64Payload', async (req, res) => {
                         continue;
                     }
                     const segmentUrl = new URL(trimmed, ctx.manifestBaseUrl).href;
-                    rewrittenLines.push(`http://${proxyHost}/proxy/${buildRewrittenPayload(
-                        segmentUrl,
-                        ctx.referer,
-                        ctx.extraHeaders,
-                        embedUrl,
-                        ctx.directOk
-                    )}`);
+                    if (passthrough) {
+                        rewrittenLines.push(segmentUrl);
+                    } else {
+                        rewrittenLines.push(`http://${proxyHost}/proxy/${buildRewrittenPayload(
+                            segmentUrl,
+                            ctx.referer,
+                            ctx.extraHeaders,
+                            embedUrl,
+                            ctx.directOk
+                        )}`);
+                    }
                     segmentCount++;
                     continue;
                 }
@@ -399,7 +371,7 @@ app.get('/proxy/*b64Payload', async (req, res) => {
                 return;
             }
 
-            console.log(`  - Rewrote ${segmentCount} segment URL(s)`);
+            console.log(`  - ${passthrough ? 'Normalized' : 'Rewrote'} ${segmentCount} segment URL(s)`);
             const rewrittenPlaylist = rewrittenLines.join('\n');
 
             res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
