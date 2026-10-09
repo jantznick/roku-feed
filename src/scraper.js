@@ -1,10 +1,30 @@
-import puppeteer from 'puppeteer';
 import fs from 'fs/promises';
 import { safeClosePage, isBrowserConnected } from './puppeteer-utils.js';
 import { mapPool, getEmbedConcurrency } from './async-pool.js';
+import { resolveStreamFromEmbed } from './embed-resolver.js';
 
 const SCRAPER_URL = "https://onhockey.tv/";
 const DEBUG_FILE_PATH = "debug-output.html";
+
+/** Max resolved streams to keep per onhockey game (mirrors Streamed.pk). */
+const MAX_STREAMS_PER_GAME = 5;
+
+/**
+ * Providers we know how to turn into playable HLS.
+ * onhockey.tv rotated away from fluidtv/brcove toward these labels.
+ * Preference order is used when capping streams per game.
+ */
+const PROVIDER_PREFERENCE = [
+    'streamd',  // embed.st — same stack as Streamed.pk
+    'plytvme',  // embedsports / buffsports
+    'mtchor',   // matchora embeds (reliable HLS)
+    'fluidtv',  // direct m3u8 in ?channel=
+    'brcove',   // Brightcove
+    'vodcast',  // Brightcove-style embeds
+    'sportpl',  // sportplus.watch
+];
+
+const ACCEPTED_PROVIDERS = new Set(PROVIDER_PREFERENCE);
 
 /**
  * Converts a UTC time string (HH:mm) to CST by subtracting 6 hours.
@@ -32,47 +52,145 @@ function convertUtcToCst(utcTime) {
 }
 
 /**
- * Parses a "gamelinks" div to find stream links, including their feed type (home/away).
- * This is a direct port of the logic from the old, working script.
- * This is designed to be executed in the browser's context.
+ * Parses a "gamelinks" div to find stream links, including feed / network labels.
+ * Designed to be executed in the browser's context (serialized via .toString()).
+ * Keep all constants inline — outer-scope bindings will not exist in page.evaluate.
  */
 function extractStreamLinks(gameLinksDiv) {
     if (!gameLinksDiv) return [];
 
-    const links = [];
-    let currentFeedType = 'main'; // Default feed type
+    // Must stay in sync with PROVIDER_PREFERENCE in scraper.js module scope.
+    const accepted = new Set([
+        'streamd', 'plytvme', 'mtchor', 'fluidtv', 'brcove', 'vodcast', 'sportpl',
+    ]);
 
-    // Iterate over all child nodes to correctly identify text nodes like "home feed:"
-    gameLinksDiv.childNodes.forEach(node => {
-        // If the node is a text node, check if it indicates a feed type
+    const links = [];
+    let currentFeedType = 'main';
+
+    gameLinksDiv.childNodes.forEach((node) => {
         if (node.nodeType === Node.TEXT_NODE) {
             const text = node.textContent?.trim().toLowerCase();
-            if (text?.startsWith('home feed')) {
+            if (!text) return;
+            // Legacy home/away labels, plus modern network section labels ("ABC:", "SN:", "russian:")
+            if (text.startsWith('home feed')) {
                 currentFeedType = 'home';
-            } else if (text?.startsWith('away feed')) {
+            } else if (text.startsWith('away feed')) {
                 currentFeedType = 'away';
+            } else if (text.endsWith(':')) {
+                currentFeedType = text.replace(/:$/, '').trim() || 'main';
             }
+            return;
         }
 
-        // If the node is an element, check if it's a stream link
         if (node.nodeType === Node.ELEMENT_NODE && node.tagName === 'A') {
             const anchor = node;
             const provider = anchor.textContent?.trim().toLowerCase();
             const rawUrl = anchor.getAttribute('href');
+            if (!provider || !rawUrl || !accepted.has(provider)) return;
 
-            if ((provider === 'fluidtv' || provider === 'vodcast' || provider === 'brcove') && rawUrl) {
-                // Pass the raw URL and the determined feed type
-                links.push({
-                    provider,
-                    url: rawUrl,
-                    feedType: currentFeedType,
-                    name: provider,
-                });
-            }
+            const title = anchor.getAttribute('title')?.trim();
+            links.push({
+                provider,
+                url: rawUrl,
+                feedType: currentFeedType,
+                name: title || provider,
+            });
+        }
+
+        // Section labels sometimes wrap in <br>english(int):</br>-style siblings; also
+        // catch bare label elements that aren't anchors.
+        if (node.nodeType === Node.ELEMENT_NODE && node.tagName === 'BR') {
+            // no-op; next text node updates feed type
         }
     });
 
     return links;
+}
+
+/**
+ * Rank streams so English / known-good providers are deep-scraped first.
+ * @param {{ provider: string, name?: string, feedType?: string }} stream
+ */
+function streamPreferenceScore(stream) {
+    const providerIdx = PROVIDER_PREFERENCE.indexOf(stream.provider);
+    const providerScore = providerIdx === -1 ? 100 : providerIdx;
+
+    const label = `${stream.feedType || ''} ${stream.name || ''}`.toLowerCase();
+    // Deprioritize clearly non-English sections when capping.
+    const nonEnglish =
+        /\b(russian|swedish|czech|german|danish|french\(fr\)|polish|spanish|portuguese|dutch|croatian|bulgarian|finnish)\b/.test(
+            label
+        );
+    const englishBoost = nonEnglish ? 50 : 0;
+
+    return providerScore + englishBoost;
+}
+
+/**
+ * Cap and order stream candidates before expensive deep scrapes.
+ * @param {any[]} streams
+ */
+function prioritizeStreams(streams) {
+    return [...streams]
+        .sort((a, b) => streamPreferenceScore(a) - streamPreferenceScore(b))
+        .slice(0, MAX_STREAMS_PER_GAME);
+}
+
+/**
+ * Unwrap onhockey link hrefs into a direct embed / m3u8 URL.
+ * Handles np_*.php?channel=..., protocol-relative //host/..., and absolute URLs.
+ * @param {string} href
+ * @returns {string|null}
+ */
+function unwrapOnHockeyTarget(href) {
+    if (!href) return null;
+
+    try {
+        const absolute = new URL(href, SCRAPER_URL);
+        const channel = absolute.searchParams.get('channel');
+        if (channel) {
+            if (channel.startsWith('//')) return `https:${channel}`;
+            return channel;
+        }
+        if (href.startsWith('//')) return `https:${href}`;
+        return absolute.href;
+    } catch {
+        if (href.startsWith('//')) return `https:${href}`;
+        return href;
+    }
+}
+
+/**
+ * Apply stealth-ish defaults before hitting Cloudflare-fronted pages.
+ * @param {import('puppeteer').Page} page
+ */
+async function prepareOnHockeyPage(page) {
+    await page.setUserAgent(
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+    );
+    await page.setExtraHTTPHeaders({
+        'Accept-Language': 'en-US,en;q=0.9',
+    });
+    await page.evaluateOnNewDocument(() => {
+        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+    });
+}
+
+/**
+ * Wait until the real schedule table is present (not a Cloudflare interstitial).
+ * The old schedule_table_eng.php AJAX endpoint now 404s; schedule HTML is inlined
+ * in the homepage, but CF challenges still delay #gametable.
+ * @param {import('puppeteer').Page} page
+ */
+async function waitForGameTable(page) {
+    await page.waitForFunction(
+        () => {
+            const title = (document.title || '').toLowerCase();
+            if (title.includes('just a moment')) return false;
+            return Boolean(document.querySelector('#gametable'));
+        },
+        { timeout: 90000 }
+    );
 }
 
 /**
@@ -92,13 +210,9 @@ export async function scrapeMainPage(browser) {
             console.log(`Loaded content from ${DEBUG_FILE_PATH}`);
         } else {
             console.log(`Navigating to ${SCRAPER_URL}...`);
-            // domcontentloaded + explicit wait: networkidle2 often finishes on Cloudflare's
-            // interstitial before #gametable exists.
-            await page.setUserAgent(
-                'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            );
-            await page.goto(SCRAPER_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
-            await page.waitForSelector('#gametable', { timeout: 60000 });
+            await prepareOnHockeyPage(page);
+            await page.goto(SCRAPER_URL, { waitUntil: "domcontentloaded", timeout: 90000 });
+            await waitForGameTable(page);
             console.log("Page loaded.");
 
             // Save the HTML content for debugging purposes
@@ -112,91 +226,124 @@ export async function scrapeMainPage(browser) {
             const scrapedGames = [];
             const leaguesToScrape = ["NHL", "NHL Rookie Camp", "NCAA D1 Men", "AHL"];
 
-            leaguesToScrape.forEach(leagueName => {
+            /**
+             * Dates live in sibling <tbody class="Date"> rows, not inside the league tbody.
+             * Walk previous sibling rows first, then previous tbodies.
+             */
+            function findDateText(row) {
+                let previousRow = row.previousElementSibling;
+                while (previousRow) {
+                    if (previousRow.classList.contains('date')) {
+                        return previousRow.querySelector('td:nth-child(2)')?.textContent?.trim() || '';
+                    }
+                    previousRow = previousRow.previousElementSibling;
+                }
+
+                let tbody = row.closest('tbody')?.previousElementSibling;
+                while (tbody) {
+                    const dateRow = tbody.querySelector('tr.date');
+                    if (dateRow) {
+                        const text = dateRow.querySelector('td:nth-child(2)')?.textContent?.trim() || '';
+                        if (text) return text;
+                    }
+                    tbody = tbody.previousElementSibling;
+                }
+                return '';
+            }
+
+            leaguesToScrape.forEach((leagueName) => {
                 const allTBodies = Array.from(document.querySelectorAll("#content > #gametable > tbody"));
-                const leagueTBody = allTBodies.find(tbody => {
+                // A league can appear multiple times (once per date section).
+                const leagueTBodies = allTBodies.filter((tbody) => {
                     const header = tbody.querySelector("tr:first-child > td > b");
                     return header && header.textContent?.trim() === leagueName;
                 });
 
-                if (!leagueTBody) return;
+                leagueTBodies.forEach((leagueTBody) => {
+                    const gameRows = leagueTBody.querySelectorAll("tr.game");
 
-                const gameRows = leagueTBody.querySelectorAll("tr.game");
+                    gameRows.forEach((row) => {
+                        const dateText = findDateText(row);
 
-                gameRows.forEach((row) => {
-                    // Find the game's date by looking for the nearest preceding date row
-                    let dateText = '';
-                    let previousRow = row.previousElementSibling;
-                    while (previousRow) {
-                        if (previousRow.classList.contains('date')) {
-                            dateText = previousRow.querySelector('td:nth-child(2)').textContent.trim();
-                            break;
-                        }
-                        previousRow = previousRow.previousElementSibling;
-                    }
+                        const columns = row.querySelectorAll("td");
+                        if (columns.length < 2) return;
 
-                    const columns = row.querySelectorAll("td");
-                    if (columns.length < 2) return;
+                        const time = columns[0].textContent?.trim() || "N/A";
+                        const teamsText = columns[1].childNodes[0].textContent?.trim();
+                        const baseTeams = teamsText ? teamsText.split(" - ") : [];
+                        const gameName = baseTeams.join(" vs ");
 
-                    const time = columns[0].textContent?.trim() || "N/A";
-                    const teamsText = columns[1].childNodes[0].textContent?.trim();
-                    const baseTeams = teamsText ? teamsText.split(" - ") : [];
-                    const gameName = baseTeams.join(" vs ");
+                        const gameId = `${gameName}-${dateText}`.replace(/\s+/g, '-').replace(/-$/, '');
 
-                    // Create a more robust unique ID using the game name and date
-                    const gameId = `${gameName}-${dateText}`.replace(/\s+/g, '-').replace(/-$/, '');
+                        const dateStringAttempt = `${dateText.split(', ')[1] || dateText} ${new Date().getFullYear()} ${time || '00:00'}:00 UTC`;
+                        let releaseDateObj = new Date(dateStringAttempt);
 
-                    const dateStringAttempt = `${dateText.split(', ')[1]} ${new Date().getFullYear()} ${time || '00:00'}:00 UTC`;
-                    let releaseDateObj = new Date(dateStringAttempt);
-
-                    // Final validation. If parsing fails for any reason, use now as a fallback.
-                    if (isNaN(releaseDateObj.getTime())) {
-                        console.warn(`-- Failed to parse date for game "${gameName}". Falling back to current time.`);
-                        releaseDateObj = new Date();
-                    }
-
-                    const gameLinksDiv = row.querySelector(".gamelinks");
-                    const streams = evaledExtractStreamLinks(gameLinksDiv);
-
-                    if (streams.length > 0) {
-                        let league;
-                        if (leagueName.includes('NCAA')) {
-                            league = 'NCAA';
-                        } else if (leagueName.includes('AHL')) {
-                            league = 'AHL';
-                        } else if (leagueName.includes('Rookie Camp')) {
-                            league = 'NHL Rookie Camp';
-                        } else {
-                            league = 'NHL';
+                        if (isNaN(releaseDateObj.getTime())) {
+                            console.warn(`-- Failed to parse date for game "${gameName}". Falling back to current time.`);
+                            releaseDateObj = new Date();
                         }
 
-                        scrapedGames.push({
-                            id: gameId,
-                            name: gameName,
-                            time,
-                            releaseDate: releaseDateObj.toISOString(),
-                            league,
-                            teams: baseTeams,
-                            streamLinks: streams
-                        });
-                    }
+                        const gameLinksDiv = row.querySelector(".gamelinks");
+                        const streams = evaledExtractStreamLinks(gameLinksDiv);
+
+                        if (streams.length > 0) {
+                            let league;
+                            if (leagueName.includes('NCAA')) {
+                                league = 'NCAA';
+                            } else if (leagueName.includes('AHL')) {
+                                league = 'AHL';
+                            } else if (leagueName.includes('Rookie Camp')) {
+                                league = 'NHL Rookie Camp';
+                            } else {
+                                league = 'NHL';
+                            }
+
+                            scrapedGames.push({
+                                id: gameId,
+                                name: gameName,
+                                time,
+                                releaseDate: releaseDateObj.toISOString(),
+                                league,
+                                teams: baseTeams,
+                                streamLinks: streams,
+                            });
+                        }
+                    });
                 });
             });
 
             return scrapedGames;
         }, extractStreamLinks.toString());
 
-        // Convert all game times from UTC to CST before returning
-        const processedGames = games.map(game => ({
+        const processedGames = games.map((game) => ({
             ...game,
-            time: convertUtcToCst(game.time)
+            time: convertUtcToCst(game.time),
+            streamLinks: prioritizeStreams(game.streamLinks || []),
         }));
 
-        console.log(`Found ${processedGames.length} total games on the main page.`);
+        const providerCounts = {};
+        for (const game of processedGames) {
+            for (const stream of game.streamLinks) {
+                providerCounts[stream.provider] = (providerCounts[stream.provider] || 0) + 1;
+            }
+        }
+        console.log(
+            `Found ${processedGames.length} total games on the main page.` +
+                (Object.keys(providerCounts).length
+                    ? ` Providers: ${JSON.stringify(providerCounts)}`
+                    : ' (no accepted stream providers on listed games yet)')
+        );
         return processedGames;
 
     } catch (error) {
         console.error(`An error occurred during main page scraping:`, error);
+        try {
+            const htmlContent = await page.content();
+            await fs.writeFile('latest-scrape-failure.html', htmlContent, 'utf-8');
+            console.error('Saved failure HTML to latest-scrape-failure.html');
+        } catch {
+            // ignore secondary failure
+        }
         throw error; // Re-throw to be caught by the main loop
     } finally {
         if (page) await safeClosePage(page);
@@ -315,6 +462,61 @@ async function getEmbedStreamUrl(browser, embedUrl, label = 'embed') {
 }
 
 /**
+ * Resolve one onhockey stream link to a playable HLS entry (with optional referer).
+ * @param {import('puppeteer').Browser} browser
+ * @param {{ provider: string, url: string, name?: string, feedType?: string }} stream
+ */
+async function resolveOnHockeyStream(browser, stream) {
+    const target = unwrapOnHockeyTarget(stream.url);
+    if (!target) return null;
+
+    // Direct HLS (classic fluidtv): channel=https://.../master.m3u8
+    if (isM3u8Url(target)) {
+        console.log(`  -> Direct m3u8 from ${stream.provider}: ${target}`);
+        return {
+            ...stream,
+            url: target,
+            embedUrl: stream.url,
+            name: stream.name || stream.provider,
+        };
+    }
+
+    // Brightcove still needs the dedicated playback-API path.
+    if (stream.provider === 'vodcast' || stream.provider === 'brcove') {
+        const finalUrl = await getEmbedStreamUrl(browser, target, stream.provider);
+        if (!finalUrl) return null;
+        return {
+            ...stream,
+            url: finalUrl,
+            embedUrl: target,
+            name: stream.name || stream.provider,
+        };
+    }
+
+    // Everyone else: same embed interceptor used by Streamed.pk (captures Referer).
+    if (!ACCEPTED_PROVIDERS.has(stream.provider)) {
+        return null;
+    }
+
+    const info = await resolveStreamFromEmbed(browser, target, {
+        sourceName: stream.name || stream.provider,
+        verbose: true,
+    });
+    if (!info?.streamUrl) return null;
+
+    return {
+        ...stream,
+        url: info.streamUrl,
+        embedUrl: info.embedUrl || target,
+        name: stream.name || stream.provider,
+        headers: info.referer ? { Referer: info.referer } : undefined,
+        requestHeaders: info.requestHeaders || {},
+        directFetchOk: Boolean(info.directFetchOk),
+        confirmedAt: info.confirmedAt,
+    };
+}
+
+/**
  * Takes a list of games and performs a "deep scrape" to find the actual stream URLs.
  * Games are processed with bounded concurrency (EMBED_CONCURRENCY); streams within
  * a game stay sequential.
@@ -337,32 +539,25 @@ export async function deepScrapeGames(browser, games) {
             }
 
             const processedStreamLinks = [];
-            for (const stream of game.streamLinks) {
+            const candidates = prioritizeStreams(game.streamLinks || []);
+
+            for (const stream of candidates) {
                 if (!isBrowserConnected(browser)) {
                     break;
                 }
-
-                let finalUrl = null;
-                const absoluteUrl = new URL(stream.url, SCRAPER_URL).href;
-
-                if (stream.provider === 'fluidtv') {
-                    const urlParams = new URLSearchParams(new URL(absoluteUrl).search);
-                    finalUrl = urlParams.get('channel') || '';
-                } else if (stream.provider === 'vodcast' || stream.provider === 'brcove') {
-                    const urlParams = new URLSearchParams(new URL(absoluteUrl).search);
-                    const channel = urlParams.get('channel');
-                    if (channel) {
-                        const embedUrl = channel.startsWith('//') ? `https:${channel}` : channel;
-                        finalUrl = await getEmbedStreamUrl(browser, embedUrl, stream.provider);
-                    }
+                if (processedStreamLinks.length >= MAX_STREAMS_PER_GAME) {
+                    break;
                 }
 
-                if (finalUrl) {
-                    processedStreamLinks.push({
-                        ...stream,
-                        url: finalUrl,
-                        name: stream.name || stream.provider,
-                    });
+                try {
+                    const resolved = await resolveOnHockeyStream(browser, stream);
+                    if (resolved) {
+                        processedStreamLinks.push(resolved);
+                    }
+                } catch (error) {
+                    console.error(
+                        `  -> Failed resolving ${stream.provider} for ${game.name}: ${error.message}`
+                    );
                 }
             }
 

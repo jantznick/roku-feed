@@ -10,7 +10,9 @@
     "dry-run": "DRY_RUN=true node src/index.js",
     "upload": "node src/upload-dist.js",
     "upload:all": "node src/upload-dist.js --images",
-    "test-stream": "node src/test-stream.js"
+    "test-stream": "node src/test-stream.js",
+    "test-onhockey-parse": "node scripts/test-onhockey-parse.mjs",
+    "probe-onhockey": "PROXY_HEADLESS=true node scripts/probe-onhockey.mjs"
   },
   "keywords": [],
   "author": "",
