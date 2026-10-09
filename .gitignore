@@ -16,6 +16,7 @@ data/gamestable.html
 data/soccer-leagues.log
 data/streamed-live-sample.json
 data/streamstable.html
+data/onhockey-cf-cookies.json
 latest-scrape-output.html
 latest-scrape-failure.html
 probe-*.html

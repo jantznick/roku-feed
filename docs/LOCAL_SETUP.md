@@ -114,7 +114,7 @@ On startup the scraper **downloads the previous feed from B2** (when configured)
 
 ### Sports scope
 
-- **onhockey.tv:** NHL, NHL Rookie Camp, NCAA D1 Men, AHL. Links often appear only near game time; curl/wget get Cloudflare challenges — the scraper uses Puppeteer. Providers are `streamd` / `plytvme` / `mtchor` / `fluidtv` / `brcove` / `vodcast` / `sportpl` (not the old fluidtv-only filter).
+- **onhockey.tv:** NHL, NHL Rookie Camp, NCAA D1 Men, AHL. Links often appear only near game time; curl/wget get Cloudflare challenges — the scraper uses Puppeteer **stealth** + system Chrome when available, reuses `data/onhockey-cf-cookies.json` (`cf_clearance`), and retries. A failed onhockey scrape no longer aborts Streamed/TimStreams. Providers are `streamd` / `plytvme` / `mtchor` / `fluidtv` / `brcove` / `vodcast` / `sportpl`.
 - **Streamed.pk:** hockey, baseball, basketball, american-football, motor-sports
 - **24/7 channels:** USA networks (NHL Network, MLB TV, NBA TV, ESPN/NFL, etc.)
 - **TimStreams (timst.top):** live-TV split by genre — US sports → `24/7 Channels`, US entertainment → `Entertainment`, all cartoons → `Cartoons`. Uses each channel’s catalog `logo` as the Roku poster (no local banner art required). Signed HLS via grandemx; may need the LAN proxy / home IP when datacenter CDNs 404.

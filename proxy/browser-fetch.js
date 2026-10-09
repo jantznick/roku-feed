@@ -1,10 +1,9 @@
-import puppeteer from 'puppeteer';
 import {
     fetchManifestOnPage,
     getLatestManifestBody,
     waitForLatestManifestBody,
 } from '../src/manifest-capture.js';
-import { getPuppeteerLaunchOptions, describePuppeteerMode } from '../src/puppeteer-config.js';
+import { launchBrowser as launchStealthBrowser, describePuppeteerMode } from '../src/puppeteer-config.js';
 import { BROWSER_USER_AGENT } from '../src/proxy-payload.js';
 import { isBrowserConnected } from '../src/puppeteer-utils.js';
 import { getEmbedPage } from './embed-pages.js';
@@ -317,7 +316,7 @@ class BrowserSession {
 async function launchBrowser() {
     const mode = describePuppeteerMode();
     logStep(`Launching Chromium (${mode})...`);
-    browserLaunchPromise = puppeteer.launch(getPuppeteerLaunchOptions());
+    browserLaunchPromise = launchStealthBrowser();
 
     browser = await browserLaunchPromise;
     browser.on('disconnected', () => {
