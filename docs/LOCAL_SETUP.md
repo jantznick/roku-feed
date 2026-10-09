@@ -114,7 +114,7 @@ On startup the scraper **downloads the previous feed from B2** (when configured)
 
 ### Sports scope
 
-- **onhockey.tv:** NHL, NHL Rookie Camp, NCAA D1 Men, AHL (optional; may return 0 if the site layout changed)
+- **onhockey.tv:** NHL, NHL Rookie Camp, NCAA D1 Men, AHL. Links often appear only near game time; curl/wget get Cloudflare challenges — the scraper uses Puppeteer. Providers are `streamd` / `plytvme` / `mtchor` / `fluidtv` / `brcove` / `vodcast` / `sportpl` (not the old fluidtv-only filter).
 - **Streamed.pk:** hockey, baseball, basketball, american-football, motor-sports
 - **24/7 channels:** USA networks (NHL Network, MLB TV, NBA TV, ESPN/NFL, etc.)
 
