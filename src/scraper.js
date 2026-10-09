@@ -15,22 +15,25 @@ const MAX_STREAMS_PER_GAME = 5;
  * Providers we know how to turn into playable HLS.
  * Preference order is used when capping streams per game (deep scrape is expensive).
  *
- * Live reliability (from home-server deep scrapes):
- * - mtchor   → matchora.to embeds — consistently yields .m3u8
- * - fluidtv  → direct m3u8 in ?channel= (rare on English rows, free when present)
- * - streamd  → embed.st — mixed; often works near puck drop
- * - plytvme  → embedsports.me — flaky in headless (try after better providers)
+ * Status (from browser walks + home-server runs):
+ * - mtchor   → matchora.to — works (baseline)
+ * - fluidtv  → direct m3u8 in ?channel= — works when present
+ * - streamd  → embed.st — works; needs #dontfoid strip + JW/play click
+ * - plytvme  → embedsports.me — works only via parent iframe (direct = blocked);
+ *              nested dervlin JW player. Headless Chrome often gets dervlin
+ *              "Network Error"; visible Chrome / xvfb works.
+ * - sportpl  → sportplus.watch game pages — US often geo-blocked ("restrictions
+ *              in your country"); fail-fast when blocked, resolve when player exists
  * - brcove / vodcast → Brightcove playback API
  *
- * Intentionally omitted:
- * - sportpl (sportplus.watch) — full site pages, not embeds; Puppeteer never sees m3u8
- * - damitv / ddlive / lovecdn / … — common on the schedule but unproven in our resolver
+ * Common on schedule but not accepted yet: damitv, ddlive, lovecdn, …
  */
 const PROVIDER_PREFERENCE = [
     'mtchor',
     'fluidtv',
     'streamd',
     'plytvme',
+    'sportpl',
     'brcove',
     'vodcast',
 ];
@@ -80,7 +83,7 @@ function extractStreamLinks(gameLinksDiv) {
 
     // Must stay in sync with PROVIDER_PREFERENCE in scraper.js module scope.
     const accepted = new Set([
-        'mtchor', 'fluidtv', 'streamd', 'plytvme', 'brcove', 'vodcast',
+        'mtchor', 'fluidtv', 'streamd', 'plytvme', 'sportpl', 'brcove', 'vodcast',
     ]);
 
     const links = [];

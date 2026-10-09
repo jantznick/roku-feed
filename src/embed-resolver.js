@@ -28,12 +28,24 @@ const PLAY_SELECTORS = [
 ];
 const PAUSE_SELECTORS = ['[aria-label="Pause"]', '.vjs-playing', '.jw-state-playing'];
 
-/** Ad-heavy embed hosts rarely reach networkidle2 before the 30s timeout. */
+/** Hosts that serve "Direct access blocked" unless loaded inside a parent iframe. */
+function needsIframeParent(embedUrl) {
+    return /embedsports\.|buffsports\./i.test(embedUrl);
+}
+
+/** Ad-heavy embed hosts rarely reach networkidle2 before the timeout. */
 function gotoWaitUntil(embedUrl) {
-    if (/embedsports\.|buffsports\.|matchora\.|sportplus\.|dami-tv\./i.test(embedUrl)) {
+    if (/embedsports\.|buffsports\.|matchora\.|sportplus\.|dami-tv\.|dervlin\./i.test(embedUrl)) {
         return 'domcontentloaded';
     }
     return 'networkidle2';
+}
+
+function isManifestCandidate(url, contentType = '') {
+    const ct = (contentType || '').toLowerCase();
+    if (url.includes('.m3u8') || url.includes('.mpd')) return true;
+    if (ct.includes('mpegurl') || ct.includes('application/vnd.apple.mpegurl')) return true;
+    return false;
 }
 
 async function userAgentForBrowser(browser) {
@@ -49,7 +61,51 @@ async function userAgentForBrowser(browser) {
     return BROWSER_USER_AGENT;
 }
 
-/** Last-resort nudge when no explicit play control exists (common on embedsports). */
+/** Invisible overlays (e.g. embed.st #dontfoid) steal clicks from the real play control. */
+async function stripClickBlockers(page) {
+    for (const frame of page.frames()) {
+        try {
+            await frame.evaluate(() => {
+                document
+                    .querySelectorAll('#dontfoid, [id*="dontfo"], .ad-overlay, .adsbox')
+                    .forEach((el) => el.remove());
+            });
+        } catch {
+            // cross-origin / detached
+        }
+    }
+}
+
+/** Pull HLS file from JW Player playlist APIs across frames (plytvme/dervlin, embed.st). */
+async function extractJwPlaylistFile(page) {
+    for (const frame of page.frames()) {
+        try {
+            const file = await frame.evaluate(() => {
+                try {
+                    if (typeof window.jwplayer !== 'function') return null;
+                    const player = window.jwplayer();
+                    try {
+                        player.play?.(true);
+                    } catch {
+                        // ignore
+                    }
+                    const item = player.getPlaylistItem?.() || player.getPlaylist?.()?.[0];
+                    return item?.file || item?.sources?.[0]?.file || null;
+                } catch {
+                    return null;
+                }
+            });
+            if (file && typeof file === 'string' && /^https?:\/\//i.test(file)) {
+                return file;
+            }
+        } catch {
+            // ignore
+        }
+    }
+    return null;
+}
+
+/** Last-resort nudge when no explicit play control exists. */
 async function nudgePlayer(page) {
     try {
         await page.evaluate(() => {
@@ -109,13 +165,22 @@ async function findPlayButton(page) {
 }
 
 async function clickPlayButton(page, log) {
+    await stripClickBlockers(page);
+
     for (let attempt = 1; attempt <= 3; attempt++) {
         const buttonInfo = await findPlayButton(page);
         if (!buttonInfo) {
-            return false;
+            // JW may exist without a matching selector — try the API directly.
+            const jwFile = await extractJwPlaylistFile(page);
+            if (jwFile) {
+                log('-- JW player playlist found without play-button selector');
+                return { clicked: true, jwFile };
+            }
+            return { clicked: false, jwFile: null };
         }
         if (buttonInfo.isPlaying) {
-            return true;
+            const jwFile = await extractJwPlaylistFile(page);
+            return { clicked: true, jwFile };
         }
 
         try {
@@ -130,7 +195,8 @@ async function clickPlayButton(page, log) {
                     }
                 }
             }
-            return true;
+            const jwFile = await extractJwPlaylistFile(page);
+            return { clicked: true, jwFile };
         } catch (error) {
             if (isFrameDetachedError(error)) {
                 log(`-- Play click failed (frame detached), retry ${attempt}/3...`);
@@ -140,7 +206,7 @@ async function clickPlayButton(page, log) {
             throw error;
         }
     }
-    return false;
+    return { clicked: false, jwFile: null };
 }
 
 function pickBestCandidate(candidates) {
@@ -165,6 +231,25 @@ async function runNodeReplayCheck(streamInfo, log) {
         log(`  -> Node replay check failed: ${error.message}`);
         return false;
     }
+}
+
+/**
+ * Load embedsports/buffsports inside a parent document.
+ * Direct page.goto() returns "Direct access blocked".
+ * @param {import('puppeteer').Page} page
+ * @param {string} embedUrl
+ */
+async function loadInIframeParent(page, embedUrl) {
+    const html = `<!doctype html>
+<html><head><meta charset="utf-8"><title>embed parent</title></head>
+<body style="margin:0;background:#000">
+<iframe id="emb" src="${embedUrl}" width="1280" height="720"
+  allowfullscreen allow="autoplay; fullscreen; encrypted-media"
+  referrerpolicy="no-referrer-when-downgrade"></iframe>
+</body></html>`;
+    await page.setContent(html, { waitUntil: 'domcontentloaded' });
+    // Nested dervlin JW player needs a few seconds to bootstrap CSRF + playlist.
+    await new Promise((resolve) => setTimeout(resolve, 4000));
 }
 
 /**
@@ -199,44 +284,72 @@ export async function resolveStreamFromEmbed(browser, embedUrl, options = {}) {
         /** @type {Array<{ score: number, status: number, info: object }>} */
         const candidates = [];
 
+        const pushCandidate = (url, status, requestHeaders = {}, refererOverride = null) => {
+            if (!url) return;
+            const referer = pickReferer(embedUrl, refererOverride || requestHeaders.referer);
+            const score = scoreManifestUrl(url);
+            const info = {
+                streamUrl: url,
+                referer,
+                requestHeaders: extractPassthroughHeaders(requestHeaders),
+                embedUrl,
+                sourceName,
+                confirmedAt: new Date().toISOString(),
+            };
+            candidates.push({ score, status, info });
+            log(`[${status}] Stream manifest candidate: ${url}`);
+        };
+
         const responseListener = (response) => {
             const url = response.url();
-            if (!url.includes('.m3u8') && !url.includes('.mpd')) {
+            const contentType = response.headers()['content-type'] || '';
+            if (!isManifestCandidate(url, contentType)) {
                 return;
             }
 
             const status = response.status();
             const request = response.request();
             const reqHeaders = request.headers();
-            const referer = pickReferer(embedUrl, reqHeaders.referer);
-            const score = scoreManifestUrl(url);
-            const info = {
-                streamUrl: url,
-                referer,
-                requestHeaders: extractPassthroughHeaders(reqHeaders),
-                embedUrl,
-                sourceName,
-                confirmedAt: new Date().toISOString(),
-            };
-
-            candidates.push({ score, status, info });
-            log(`[${status}] Stream manifest candidate: ${url}`);
+            pushCandidate(url, status, reqHeaders, reqHeaders.referer);
         };
 
         page.on('response', responseListener);
 
-        const waitUntil = gotoWaitUntil(embedUrl);
-        log(`-- Navigating to embed URL: ${embedUrl} (Source: ${sourceName})`);
-        await page.goto(embedUrl, { waitUntil, timeout: 45000 });
+        const useIframeParent = needsIframeParent(embedUrl);
+        if (useIframeParent) {
+            log(`-- Loading embed inside iframe parent: ${embedUrl} (Source: ${sourceName})`);
+            await loadInIframeParent(page, embedUrl);
+        } else {
+            const waitUntil = gotoWaitUntil(embedUrl);
+            log(`-- Navigating to embed URL: ${embedUrl} (Source: ${sourceName})`);
+            await page.goto(embedUrl, { waitUntil, timeout: 45000 });
+        }
+
+        // Sportplus geo-block — fail fast instead of waiting for a phantom player.
+        const restricted = await page.evaluate(() =>
+            /not available due to restrictions in your country/i.test(document.body?.innerText || '')
+        );
+        if (restricted) {
+            log('-- Sportplus geo-blocked in this region; skipping');
+            return null;
+        }
 
         log('-- Player page loaded. Looking for play button...');
-        const clicked = await clickPlayButton(page, log);
+        const { clicked, jwFile } = await clickPlayButton(page, log);
+        if (jwFile) {
+            pushCandidate(jwFile, 200, {}, `${new URL(embedUrl).origin}/`);
+        }
         if (clicked) {
             log('-- Play button clicked (or already playing).');
             await new Promise((resolve) => setTimeout(resolve, 3000));
         } else {
             log('-- No play button found. Nudging player / waiting for stream...');
             await nudgePlayer(page);
+            await stripClickBlockers(page);
+            const lateJw = await extractJwPlaylistFile(page);
+            if (lateJw) {
+                pushCandidate(lateJw, 200, {}, `${new URL(embedUrl).origin}/`);
+            }
         }
 
         const waitDeadline = Date.now() + 20000;
@@ -244,14 +357,32 @@ export async function resolveStreamFromEmbed(browser, embedUrl, options = {}) {
             if (candidates.some((candidate) => candidate.status === 200)) {
                 break;
             }
-            await new Promise((resolve) => setTimeout(resolve, 300));
+            // Nested plytvme/dervlin playlist can appear late.
+            const lateJw = await extractJwPlaylistFile(page);
+            if (lateJw) {
+                pushCandidate(lateJw, 200, {}, `${new URL(embedUrl).origin}/`);
+                break;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 400));
         }
 
         page.off('response', responseListener);
 
         const best = pickBestCandidate(candidates);
         if (!best || best.status !== 200) {
-            log(`-- No successful m3u8 found (${candidates.length} candidate(s))`);
+            const dervlinError = await page.evaluate(() => {
+                for (const frame of [...document.querySelectorAll('iframe')]) {
+                    // can't read cross-origin; just note presence
+                }
+                return /Network Error|Direct access blocked/i.test(document.body?.innerText || '');
+            }).catch(() => false);
+            log(
+                `-- No successful m3u8 found (${candidates.length} candidate(s))` +
+                    (useIframeParent
+                        ? ' — plytvme needs a real Chrome display in some environments (headless may hit dervlin Network Error)'
+                        : '') +
+                    (dervlinError ? ' [blocked/error text on page]' : '')
+            );
             return null;
         }
 
