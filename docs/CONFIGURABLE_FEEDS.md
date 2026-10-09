@@ -66,7 +66,11 @@ Edit **`roku-app/config/channel.json`** before packaging/sideloading:
 ```json
 {
   "apiBaseUrl": "https://your-api.example.com",
-  "defaultFeedUrl": "https://f004.backblazeb2.com/file/roku-hockey/secretfeedfilename.json"
+  "defaultFeedUrl": "https://f004.backblazeb2.com/file/roku-hockey/secretfeedfilename.json",
+  "feedSources": [
+    { "id": "live", "label": "Live Sports & TV" },
+    { "id": "plex", "label": "Plex", "url": "https://your-server/plex-feed.json" }
+  ]
 }
 ```
 
@@ -74,6 +78,9 @@ Edit **`roku-app/config/channel.json`** before packaging/sideloading:
 |-------|---------|
 | `apiBaseUrl` | Backend origin the TV calls for pairing/sync (**not** editable on device) |
 | `defaultFeedUrl` | Feed used when the TV is not linked / has no synced URL |
+| `feedSources` | Optional list of independent libraries. Each entry loads on its own timeout; one failure does not block the others. Omit `url` to use the synced/default feed chain. |
+
+The channel shows the last good cache immediately, refreshes sources in the background, and never leaves you stuck on “Loading…” because one library failed.
 
 Package/sideload `roku-app/` as usual. Details: [roku-app/README.md](../roku-app/README.md).
 
