@@ -1,9 +1,10 @@
 /**
  * Diagnostic probe for onhockey.tv: Cloudflare challenge, schedule URLs, providers.
  * Run: PROXY_HEADLESS=true node scripts/probe-onhockey.mjs
+ *
+ * Uses the same stealth Chrome launch as the scraper (not raw puppeteer).
  */
-import puppeteer from 'puppeteer';
-import { getPuppeteerLaunchOptions } from '../src/puppeteer-config.js';
+import { launchBrowser, describePuppeteerMode } from '../src/puppeteer-config.js';
 import fs from 'fs/promises';
 
 const TARGETS = [
@@ -16,21 +17,53 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+async function prepareProbePage(page) {
+  const version = await page.browser().version();
+  const full = (version.match(/(\d+\.\d+\.\d+\.\d+)/) || [])[1];
+  const major = (version.match(/(\d+)\./) || [])[1] || '154';
+  const chromeVer = full || `${major}.0.0.0`;
+  const userAgent = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVer} Safari/537.36`;
+  await page.setUserAgent(userAgent);
+  try {
+    const client = await page.createCDPSession();
+    await client.send('Network.setUserAgentOverride', {
+      userAgent,
+      acceptLanguage: 'en-US,en;q=0.9',
+      platform: 'Win32',
+      userAgentMetadata: {
+        brands: [
+          { brand: 'Not:A-Brand', version: '24' },
+          { brand: 'Chromium', version: major },
+          { brand: 'Google Chrome', version: major },
+        ],
+        fullVersionList: [
+          { brand: 'Not:A-Brand', version: '10.0.0.0' },
+          { brand: 'Chromium', version: chromeVer },
+          { brand: 'Google Chrome', version: chromeVer },
+        ],
+        fullVersion: chromeVer,
+        platform: 'Windows',
+        platformVersion: '15.0.0',
+        architecture: 'x86',
+        model: '',
+        mobile: false,
+        bitness: '64',
+        wow64: false,
+      },
+    });
+  } catch {
+    // ignore metadata failures
+  }
+  await page.setExtraHTTPHeaders({
+    'Accept-Language': 'en-US,en;q=0.9',
+  });
+}
+
 async function probeUrl(browser, url) {
   const page = await browser.newPage();
   const report = { url, steps: [] };
 
-  await page.setUserAgent(
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
-  );
-  await page.setExtraHTTPHeaders({
-    'Accept-Language': 'en-US,en;q=0.9',
-  });
-
-  // Light anti-automation fingerprint tweaks
-  await page.evaluateOnNewDocument(() => {
-    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-  });
+  await prepareProbePage(page);
 
   page.on('response', (res) => {
     const u = res.url();
@@ -116,8 +149,8 @@ async function probeUrl(browser, url) {
   return report;
 }
 
-const browser = await puppeteer.launch(getPuppeteerLaunchOptions());
-console.log('Launch options headless=', getPuppeteerLaunchOptions().headless);
+const browser = await launchBrowser();
+console.log('Browser:', describePuppeteerMode());
 
 const results = [];
 for (const url of TARGETS) {

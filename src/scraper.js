@@ -167,14 +167,61 @@ function sleep(ms) {
 }
 
 /**
+ * Build a desktop Chrome UA that matches the launched browser's version.
+ * A stale major (e.g. Chrome/131 on Chrome 154) trips Cloudflare fingerprints.
+ * @param {import('puppeteer').Browser} browser
+ */
+async function chromeUserAgentForBrowser(browser) {
+    const version = await browser.version(); // e.g. "Chrome/154.0.8037.92" or "HeadlessChrome/..."
+    const full = (version.match(/(\d+\.\d+\.\d+\.\d+)/) || [])[1];
+    const major = (version.match(/(\d+)\./) || [])[1] || '154';
+    const chromeVer = full || `${major}.0.0.0`;
+    return {
+        userAgent: `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVer} Safari/537.36`,
+        major,
+        fullVersion: chromeVer,
+    };
+}
+
+/**
  * Apply browser defaults before hitting Cloudflare-fronted pages.
- * Stealth plugin is applied at launch; this adds locale/timezone realism.
+ * Stealth plugin is applied at launch; this aligns UA/client-hints + locale.
  * @param {import('puppeteer').Page} page
  */
 async function prepareOnHockeyPage(page) {
-    await page.setUserAgent(
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
-    );
+    const { userAgent, major, fullVersion } = await chromeUserAgentForBrowser(page.browser());
+    await page.setUserAgent(userAgent);
+    // Keep Sec-CH-UA* consistent with the UA string (setUserAgent alone often doesn't).
+    try {
+        const client = await page.createCDPSession();
+        await client.send('Network.setUserAgentOverride', {
+            userAgent,
+            acceptLanguage: 'en-US,en;q=0.9',
+            platform: 'Win32',
+            userAgentMetadata: {
+                brands: [
+                    { brand: 'Not:A-Brand', version: '24' },
+                    { brand: 'Chromium', version: major },
+                    { brand: 'Google Chrome', version: major },
+                ],
+                fullVersionList: [
+                    { brand: 'Not:A-Brand', version: '10.0.0.0' },
+                    { brand: 'Chromium', version: fullVersion },
+                    { brand: 'Google Chrome', version: fullVersion },
+                ],
+                fullVersion,
+                platform: 'Windows',
+                platformVersion: '15.0.0',
+                architecture: 'x86',
+                model: '',
+                mobile: false,
+                bitness: '64',
+                wow64: false,
+            },
+        });
+    } catch {
+        // Older Chromium builds may reject userAgentMetadata — UA string still applied.
+    }
     await page.setExtraHTTPHeaders({
         'Accept-Language': 'en-US,en;q=0.9',
         Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
@@ -187,22 +234,79 @@ async function prepareOnHockeyPage(page) {
 }
 
 /**
- * Reuse Cloudflare clearance cookies from a previous successful scrape.
- * @param {import('puppeteer').Page} page
+ * Normalize cookies from disk for page.setCookie (drop expired / unsupported fields).
+ * @param {any[]} cookies
  */
-async function loadSavedCfCookies(page) {
+function sanitizeCfCookies(cookies) {
+    if (!Array.isArray(cookies)) return [];
+    const nowSec = Date.now() / 1000;
+    return cookies
+        .filter((cookie) => {
+            if (!cookie?.name || cookie.value == null) return false;
+            // Domain required so setCookie works before the first navigation.
+            if (!cookie.domain) return false;
+            if (typeof cookie.expires === 'number' && cookie.expires > 0 && cookie.expires <= nowSec) {
+                return false;
+            }
+            return true;
+        })
+        .map((cookie) => {
+            const out = {
+                name: cookie.name,
+                value: cookie.value,
+                domain: cookie.domain,
+                path: cookie.path || '/',
+            };
+            if (typeof cookie.expires === 'number' && cookie.expires > 0) out.expires = cookie.expires;
+            if (typeof cookie.httpOnly === 'boolean') out.httpOnly = cookie.httpOnly;
+            if (typeof cookie.secure === 'boolean') out.secure = cookie.secure;
+            if (cookie.sameSite === 'Strict' || cookie.sameSite === 'Lax' || cookie.sameSite === 'None') {
+                out.sameSite = cookie.sameSite;
+            }
+            return out;
+        });
+}
+
+/**
+ * Read saved Cloudflare cookies from disk (expired entries stripped).
+ * @returns {Promise<object[]>}
+ */
+async function readSavedCfCookies() {
     try {
         const raw = await fs.readFile(CF_COOKIE_PATH, 'utf8');
-        const cookies = JSON.parse(raw);
-        if (!Array.isArray(cookies) || cookies.length === 0) return false;
-        await page.setCookie(...cookies);
-        console.log(`Loaded ${cookies.length} saved onhockey cookie(s) from ${path.basename(CF_COOKIE_PATH)}`);
-        return true;
+        return sanitizeCfCookies(JSON.parse(raw));
     } catch (error) {
         if (error.code !== 'ENOENT') {
             console.warn(`Could not load onhockey cookies: ${error.message}`);
         }
-        return false;
+        return [];
+    }
+}
+
+/**
+ * Drop Cloudflare clearance cookies from the page (and optionally from disk).
+ * @param {import('puppeteer').Page} page
+ * @param {{ unlinkFile?: boolean }} [opts]
+ */
+async function clearCfCookies(page, { unlinkFile = false } = {}) {
+    try {
+        const cookies = await page.cookies(SCRAPER_URL);
+        for (const cookie of cookies) {
+            if (cookie.name === 'cf_clearance' || cookie.name.startsWith('__cf')) {
+                await page.deleteCookie(cookie);
+            }
+        }
+    } catch {
+        // ignore
+    }
+    if (unlinkFile) {
+        try {
+            await fs.unlink(CF_COOKIE_PATH);
+        } catch (error) {
+            if (error.code !== 'ENOENT') {
+                console.warn(`Could not remove saved onhockey cookies: ${error.message}`);
+            }
+        }
     }
 }
 
@@ -251,13 +355,17 @@ async function getChallengeState(page) {
 
 /**
  * Wait until #gametable appears, giving Cloudflare time to finish its JS challenge.
- * Polls so we can log progress instead of a silent 90s hang.
+ * Polls so we can log progress instead of a silent hang.
+ * If clearance cookies look stale (still challenged after a while), clears them and
+ * reloads once — without a full multi-attempt loop.
  * @param {import('puppeteer').Page} page
- * @param {number} [timeoutMs]
+ * @param {{ timeoutMs?: number, allowStaleCookieReload?: boolean }} [opts]
  */
-async function waitForGameTable(page, timeoutMs = 120000) {
+async function waitForGameTable(page, { timeoutMs = 120000, allowStaleCookieReload = false } = {}) {
     const deadline = Date.now() + timeoutMs;
     let lastLog = 0;
+    let didStaleReload = false;
+    const startedAt = Date.now();
 
     while (Date.now() < deadline) {
         const state = await getChallengeState(page);
@@ -265,13 +373,36 @@ async function waitForGameTable(page, timeoutMs = 120000) {
             return state;
         }
 
+        const challenged = state.justAMoment || state.challengeUi;
+        const elapsed = Date.now() - startedAt;
+
+        // Stale cf_clearance often sticks on the interstitial; one clean reload beats 3 full retries.
+        if (
+            allowStaleCookieReload &&
+            !didStaleReload &&
+            challenged &&
+            elapsed > 20000
+        ) {
+            didStaleReload = true;
+            console.warn(
+                '  … Cloudflare still challenging after saved cookies; clearing cf_clearance and reloading once'
+            );
+            await clearCfCookies(page, { unlinkFile: true });
+            await page.reload({
+                waitUntil: 'domcontentloaded',
+                timeout: 90000,
+            });
+            await sleep(2000 + Math.random() * 1500);
+            continue;
+        }
+
         const now = Date.now();
         if (now - lastLog > 10000) {
             lastLog = now;
-            const secs = Math.round((timeoutMs - (deadline - now)) / 1000);
+            const secs = Math.round(elapsed / 1000);
             console.log(
                 `  … waiting for onhockey schedule (${secs}s)` +
-                    ` title="${state.title}" challenge=${state.justAMoment || state.challengeUi}`
+                    ` title="${state.title}" challenge=${challenged}`
             );
         }
 
@@ -293,64 +424,38 @@ async function waitForGameTable(page, timeoutMs = 120000) {
 }
 
 /**
- * Load onhockey homepage and wait for #gametable, with CF retries + cookie reuse.
+ * Load onhockey homepage and wait for #gametable (single attempt + cookie reuse).
  * @param {import('puppeteer').Page} page
  */
 async function navigateToOnHockeySchedule(page) {
-    const attempts = 3;
-    let lastError;
+    const savedCookies = await readSavedCfCookies();
+    const hasSavedCookies = savedCookies.length > 0;
 
-    await loadSavedCfCookies(page);
-
-    for (let attempt = 1; attempt <= attempts; attempt++) {
+    if (hasSavedCookies) {
         try {
+            await page.setCookie(...savedCookies);
             console.log(
-                `Navigating to ${SCRAPER_URL} (attempt ${attempt}/${attempts})...`
+                `Loaded ${savedCookies.length} saved onhockey cookie(s) from ${path.basename(CF_COOKIE_PATH)}`
             );
-            await page.goto(SCRAPER_URL, {
-                waitUntil: 'domcontentloaded',
-                timeout: 90000,
-                referer: 'https://www.google.com/',
-            });
-
-            // Let the challenge script start before we poll.
-            await sleep(2000 + Math.random() * 1500);
-            await waitForGameTable(page, 120000);
-            await saveCfCookies(page);
-            return;
         } catch (error) {
-            lastError = error;
-            let title = '';
-            let url = '';
-            try {
-                title = await page.title();
-                url = page.url();
-            } catch {
-                // page may already be dead
-            }
-            console.warn(
-                `onhockey load attempt ${attempt} failed: ${error.message}` +
-                    (title || url ? ` (title="${title}" url=${url})` : '')
-            );
-
-            // Drop stale clearance cookies before the next try.
-            if (attempt < attempts) {
-                try {
-                    const cookies = await page.cookies(SCRAPER_URL);
-                    for (const cookie of cookies) {
-                        if (cookie.name === 'cf_clearance' || cookie.name.startsWith('__cf')) {
-                            await page.deleteCookie(cookie);
-                        }
-                    }
-                } catch {
-                    // ignore
-                }
-                await sleep(4000 * attempt);
-            }
+            console.warn(`Could not apply saved onhockey cookies: ${error.message}`);
         }
     }
 
-    throw lastError;
+    console.log(`Navigating to ${SCRAPER_URL} (single attempt)...`);
+    await page.goto(SCRAPER_URL, {
+        waitUntil: 'domcontentloaded',
+        timeout: 90000,
+        referer: 'https://www.google.com/',
+    });
+
+    // Let the challenge script start before we poll.
+    await sleep(2000 + Math.random() * 1500);
+    await waitForGameTable(page, {
+        timeoutMs: 120000,
+        allowStaleCookieReload: hasSavedCookies,
+    });
+    await saveCfCookies(page);
 }
 
 /**
