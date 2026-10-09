@@ -25,11 +25,16 @@ const CHANNELS_API = 'https://timst.top/api/channels';
 const SITE_ORIGIN = 'https://timst.top/';
 const PLAYER_REFERER = 'https://grandemx.org/';
 
+/** TimStreams genre ids from /api/channels → genres[]. */
+const GENRE_ENTERTAINMENT = 1;
+const GENRE_SPORTS = 2;
+const GENRE_CARTOONS = 3;
+
 /**
- * Curated US cable / sports channels for the "Other" feed row (verification set).
- * Names must match timst.top catalog `channel.name` exactly.
+ * US sports networks to keep (Sports genre is huge / mostly international).
+ * Names must match catalog `channel.name` exactly.
  */
-const CHANNEL_ALLOWLIST = [
+const SPORTS_ALLOWLIST = [
     'ESPN',
     'ESPN2',
     'ESPNEWS',
@@ -42,14 +47,54 @@ const CHANNEL_ALLOWLIST = [
     'NBA TV',
     'NHL Network',
     'MLB Network',
-    'TNT',
-    'TBS',
-    'USA Network',
-    'ABC',
-    'CBS',
-    'NBC',
-    'Fox',
+    'ACC Network',
+    'Big Ten Network',
+    'SEC Network',
+    'GOLF Channel',
+    'Tennis Channel',
+    'DAZN 1 USA',
+    'beIN Sports',
+    'TUDN',
+    'RACER Network',
+    'UFC Fight Pass 24/7',
 ];
+
+/**
+ * Entertainment names that are clearly non-US (catalog `flag` is often empty).
+ * Case-insensitive substring match against channel.name.
+ */
+const NON_US_ENTERTAINMENT_MARKERS = [
+    'bbc one',
+    'bbc two',
+    'bht 1',
+    'canal+',
+    'itv 1',
+    'itv 2',
+    'itv 3',
+    'itv 4',
+    'orf 1',
+    'rtl (',
+    'magenta sport',
+    'movistar plus',
+    'ms golf',
+    'bosnia',
+    'austria',
+    'germany',
+    'london',
+];
+
+/**
+ * @param {string} name
+ * @param {string|undefined|null} flag
+ */
+function isUsEntertainmentChannel(name, flag) {
+    const normalizedFlag = String(flag || '').trim().toLowerCase();
+    if (normalizedFlag && normalizedFlag !== 'us') {
+        return false;
+    }
+    const lower = name.toLowerCase();
+    return !NON_US_ENTERTAINMENT_MARKERS.some((marker) => lower.includes(marker));
+}
 
 /**
  * @param {import('puppeteer').Browser} browser
@@ -154,9 +199,14 @@ async function resolveGrandeMxSignedUrl(browser, shortUrl, label) {
 }
 
 /**
- * @returns {Promise<Array<{ name: string, url: string, logo?: string, shortUrl: string }>>}
+ * Pick TimStreams channels:
+ * - all Cartoons
+ * - US Entertainment (flag=us or unflagged without non-US name markers)
+ * - curated US Sports allowlist
+ *
+ * @returns {Promise<Array<{ name: string, url: string, logo?: string, shortUrl: string, genreName: string }>>}
  */
-async function fetchAllowlistedChannels() {
+async function fetchSelectedChannels() {
     const response = await fetch(CHANNELS_API, {
         headers: {
             'User-Agent': BROWSER_USER_AGENT,
@@ -170,12 +220,29 @@ async function fetchAllowlistedChannels() {
 
     const data = await response.json();
     const channels = Array.isArray(data?.channels) ? data.channels : [];
-    const allow = new Set(CHANNEL_ALLOWLIST.map((n) => n.toLowerCase()));
+    const genreNames = new Map(
+        (Array.isArray(data?.genres) ? data.genres : []).map((g) => [g.id, g.name])
+    );
+    const sportsAllow = new Set(SPORTS_ALLOWLIST.map((n) => n.toLowerCase()));
 
     const picked = [];
     for (const channel of channels) {
         const name = (channel?.name || '').trim();
-        if (!allow.has(name.toLowerCase())) continue;
+        if (!name) continue;
+
+        const genreId = Number(channel.genre);
+        const genreName = genreNames.get(genreId) || 'Other';
+        let include = false;
+
+        if (genreId === GENRE_CARTOONS) {
+            include = true;
+        } else if (genreId === GENRE_ENTERTAINMENT) {
+            include = isUsEntertainmentChannel(name, channel.flag);
+        } else if (genreId === GENRE_SPORTS) {
+            include = sportsAllow.has(name.toLowerCase());
+        }
+
+        if (!include) continue;
 
         const streams = Array.isArray(channel.streams) ? channel.streams : [];
         const free = streams.find((s) => s?.url && !s.vip) || streams.find((s) => s?.url);
@@ -186,19 +253,38 @@ async function fetchAllowlistedChannels() {
             url: channel.url || name.toLowerCase().replace(/\s+/g, '-'),
             logo: channel.logo || null,
             shortUrl: free.url,
+            genreName,
         });
     }
 
-    // Stable order matching the allowlist.
-    const order = new Map(CHANNEL_ALLOWLIST.map((n, i) => [n.toLowerCase(), i]));
-    picked.sort(
-        (a, b) => (order.get(a.name.toLowerCase()) ?? 99) - (order.get(b.name.toLowerCase()) ?? 99)
-    );
+    const genreOrder = { Sports: 0, Entertainment: 1, Cartoons: 2 };
+    const sportsOrder = new Map(SPORTS_ALLOWLIST.map((n, i) => [n.toLowerCase(), i]));
+    picked.sort((a, b) => {
+        const ga = genreOrder[a.genreName] ?? 9;
+        const gb = genreOrder[b.genreName] ?? 9;
+        if (ga !== gb) return ga - gb;
+        if (a.genreName === 'Sports') {
+            return (sportsOrder.get(a.name.toLowerCase()) ?? 99) - (sportsOrder.get(b.name.toLowerCase()) ?? 99);
+        }
+        return a.name.localeCompare(b.name);
+    });
     return picked;
 }
 
 /**
- * Scrape curated TimStreams live-TV channels into the "Other" feed section.
+ * Map TimStreams catalog genre → feed league key.
+ * Sports land in the existing 24/7 Channels row; entertainment/cartoons get their own.
+ * @param {string} genreName
+ */
+function leagueForGenre(genreName) {
+    if (genreName === 'Sports') return '24/7 Channels';
+    if (genreName === 'Cartoons') return 'Cartoons';
+    if (genreName === 'Entertainment') return 'Entertainment';
+    return 'Entertainment';
+}
+
+/**
+ * Scrape TimStreams live-TV into 24/7 Channels / Entertainment / Cartoons.
  * @param {import('puppeteer').Browser} browser
  * @param {Map<string, object>} [previousById]
  */
@@ -212,18 +298,24 @@ export async function scrapeTimstChannels(browser, previousById = new Map()) {
 
     let catalog;
     try {
-        catalog = await fetchAllowlistedChannels();
+        catalog = await fetchSelectedChannels();
     } catch (error) {
         console.error(`TimStreams catalog fetch failed: ${error.message}`);
         return [];
     }
 
     if (catalog.length === 0) {
-        console.log('No allowlisted TimStreams channels found in catalog.');
+        console.log('No matching TimStreams channels found in catalog.');
         return [];
     }
 
-    console.log(`Found ${catalog.length} allowlisted channels. Resolving signed HLS…`);
+    const byGenre = catalog.reduce((acc, ch) => {
+        acc[ch.genreName] = (acc[ch.genreName] || 0) + 1;
+        return acc;
+    }, {});
+    console.log(
+        `Selected ${catalog.length} channels (${Object.entries(byGenre).map(([k, v]) => `${k}: ${v}`).join(', ')}). Resolving signed HLS…`
+    );
 
     const concurrency = Math.min(getEmbedConcurrency(), 3);
     const dateAdded = new Date().toISOString();
@@ -234,6 +326,14 @@ export async function scrapeTimstChannels(browser, previousById = new Map()) {
 
         const id = `timst-${channel.url}`;
         const embedUrls = [{ url: channel.shortUrl, sourceName: 'TimStreams' }];
+
+        const league = leagueForGenre(channel.genreName);
+        const shortDescription =
+            league === 'Cartoons'
+                ? 'TimStreams cartoons'
+                : league === 'Entertainment'
+                    ? 'TimStreams entertainment'
+                    : 'TimStreams live TV';
 
         const previousItem = previousById.get(id);
         if (shouldReuseStreams(previousItem, embedUrls, { currentTitle: channel.name })) {
@@ -246,10 +346,10 @@ export async function scrapeTimstChannels(browser, previousById = new Map()) {
                     name: channel.name,
                     teams: [channel.name, ''],
                     time: '24/7',
-                    shortDescription: 'TimStreams live TV',
+                    shortDescription,
                     releaseDate: new Date().toISOString(),
                     dateAdded,
-                    league: 'Other',
+                    league,
                     poster: channel.logo,
                     streamLinks: reused,
                 };
@@ -264,10 +364,10 @@ export async function scrapeTimstChannels(browser, previousById = new Map()) {
             name: channel.name,
             teams: [channel.name, ''],
             time: '24/7',
-            shortDescription: 'TimStreams live TV',
+            shortDescription,
             releaseDate: new Date().toISOString(),
             dateAdded,
-            league: 'Other',
+            league,
             poster: channel.logo,
             streamLinks: [
                 {
@@ -284,9 +384,14 @@ export async function scrapeTimstChannels(browser, previousById = new Map()) {
     }, { shouldStop: () => !isBrowserConnected(browser) });
 
     const channels = results.filter(Boolean);
+    const leagueCounts = channels.reduce((acc, ch) => {
+        acc[ch.league] = (acc[ch.league] || 0) + 1;
+        return acc;
+    }, {});
     console.log(
         `✅ TimStreams: ${channels.length}/${catalog.length} channels ready` +
-            (reusedCount ? ` (${reusedCount} reused)` : '')
+            (reusedCount ? ` (${reusedCount} reused)` : '') +
+            ` → ${Object.entries(leagueCounts).map(([k, v]) => `${k}: ${v}`).join(', ')}`
     );
     return channels;
 }

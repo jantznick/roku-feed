@@ -117,7 +117,7 @@ On startup the scraper **downloads the previous feed from B2** (when configured)
 - **onhockey.tv:** NHL, NHL Rookie Camp, NCAA D1 Men, AHL. Links often appear only near game time; curl/wget get Cloudflare challenges — the scraper uses Puppeteer. Providers are `streamd` / `plytvme` / `mtchor` / `fluidtv` / `brcove` / `vodcast` / `sportpl` (not the old fluidtv-only filter).
 - **Streamed.pk:** hockey, baseball, basketball, american-football, motor-sports
 - **24/7 channels:** USA networks (NHL Network, MLB TV, NBA TV, ESPN/NFL, etc.)
-- **TimStreams (timst.top):** curated live-TV cable channels → feed section `Other` (ESPN, FS1, NFL Network, etc.). Signed HLS via grandemx; may need the LAN proxy / home IP when datacenter CDNs 404.
+- **TimStreams (timst.top):** live-TV split by genre — US sports → `24/7 Channels`, US entertainment → `Entertainment`, all cartoons → `Cartoons`. Uses each channel’s catalog `logo` as the Roku poster (no local banner art required). Signed HLS via grandemx; may need the LAN proxy / home IP when datacenter CDNs 404.
 
 ### Streamed.pk (live only)
 

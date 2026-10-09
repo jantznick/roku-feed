@@ -22,7 +22,7 @@ This project scrapes `onhockey.tv` for NHL, NHL Rookie Camp, NCAA Men's, and AHL
 
 - Scrapes NHL, NHL Rookie Camp, NCAA Men's, and AHL hockey games.
 - Resolves modern onhockey providers (`streamd`, `plytvme`, `mtchor`, `fluidtv`, `brcove`, `vodcast`, `sportpl`) to HLS.
-- Scrapes curated TimStreams (timst.top) live-TV channels into an `Other` feed section.
+- Scrapes TimStreams (timst.top) live-TV into `24/7 Channels` (US sports), `Entertainment`, and `Cartoons` (catalog logos used as posters).
 - Generates dynamic poster images for each game.
 - Creates a Roku-compliant JSON feed.
 - Uploads the feed and images to Backblaze B2.
