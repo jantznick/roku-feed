@@ -95,11 +95,11 @@ function gameNeedsUpdate(currentGame, previousItem) {
         return true;
     }
 
-    // TimStreams (and any directFetchOk stream): createFeedItem now writes raw
-    // m3u8 URLs. Unchanged items keep the previous feed JSON as-is, so force an
-    // update once while old /proxy/… entries are still present.
-    const wantsDirectUrl = (currentGame.streamLinks || []).some((s) => s.directFetchOk);
-    if (wantsDirectUrl && feedVideosUseProxy(previousItem)) {
+    // Unchanged items keep prior feed JSON as-is. If createFeedItem would write
+    // a /proxy/ URL (Referer present) but the feed still has a raw CDN URL —
+    // e.g. after the brief TimStreams-raw experiment — force a rewrite.
+    const wouldProxy = (currentGame.streamLinks || []).some((s) => s.headers?.Referer);
+    if (wouldProxy && !feedVideosUseProxy(previousItem)) {
         return true;
     }
 

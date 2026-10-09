@@ -25,16 +25,15 @@ Clients only talk to your proxy; the proxy talks to the stream host.
 | Condition | URL written to feed |
 |-----------|---------------------|
 | `SKIP_PROXY=true` in `.env` | Always the **direct** scraped URL |
-| Stream has `directFetchOk` (TimStreams / Node replay 200) | **Direct** CDN `.m3u8` (client fetches segments; proxy host is often 403’d by TikTok) |
-| Stream has `headers.Referer` and not `directFetchOk` | `http://<proxy>/proxy/<base64(original m3u8)>` |
+| Stream has `headers.Referer` (truthy) and proxy not skipped | `http://<proxy>/proxy/<base64(original m3u8)>` (`d=1` when Node replay OK) |
 | No `headers.Referer` | **Direct** URL |
 
 ### By source
 
 | Source | Typical `streamLinks` | Usually proxied? |
 |--------|----------------------|------------------|
-| **Streamed.pk** (live + 24/7) | Puppeteer adds `headers: { Referer }` from the embed | Yes, unless `SKIP_PROXY=true` or `directFetchOk` |
-| **TimStreams** (timst.top / grandemx) | Signed junksonus `.m3u8` + `directFetchOk` | No — raw HTTPS URL (like VLC / livepush) |
+| **Streamed.pk** (live + 24/7) | Puppeteer adds `headers: { Referer }` from the embed | Yes, unless `SKIP_PROXY=true` |
+| **TimStreams** (timst.top / grandemx) | Signed junksonus `.m3u8` + Referer + often `d=1` | Yes — Roku needs WebP-TS unwrap via proxy |
 | **onhockey.tv** | `{ provider, url }` only — no `headers` | No — always direct |
 
 If Puppeteer does not capture a referer, the stream stays direct even from Streamed.pk.
