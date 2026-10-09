@@ -18,7 +18,7 @@ const port = process.env.PORT || 8787;
 const proxyHost = process.env.PROXY_HOST || '192.168.1.50:8787';
 const debug = process.env.PROXY_DEBUG === 'true';
 
-const PROXY_VERSION = 'embed-first-v18-timst-direct';
+const PROXY_VERSION = 'embed-first-v19-timst-refresh';
 
 // GOAT disguises each MPEG-TS segment as a tiny PNG so it can live on TikTok's
 // image CDN. The real TS payload starts right after the PNG's IEND chunk. Strip
@@ -131,7 +131,7 @@ function logManifestPreview(label, body) {
 console.log(`Starting ADVANCED HLS proxy (${PROXY_VERSION})...`);
 console.log(`  - Chromium mode: ${process.env.PROXY_HEADLESS === 'true' ? 'headless' : 'visible (set PROXY_HEADLESS=true for headless)'}`);
 console.log(`  - Rewriting segment URLs to host: ${proxyHost}`);
-console.log('  - /proxy d=1: direct HTTP only (TimStreams) — no Puppeteer');
+console.log('  - /proxy d=1 (TimStreams): refresh signed m3u8 from embed once; segments stay direct HTTP');
 console.log('  - /proxy otherwise: Puppeteer embed-first (Streamed)');
 
 app.get('/', (req, res) => {
@@ -168,11 +168,15 @@ async function fetchUpstream(streamUrl, { embedUrl, referer, extraHeaders, direc
     return { response: browserResponse, mode: 'chromium' };
 }
 
-async function resolvePlaybackContext(embedUrl, streamUrl, feedReferer, feedHeaders, feedDirectOk) {
-    // TimStreams (and any d=1 feed URL): scrape already verified direct HTTP.
-    // Skip Puppeteer embed open — Docker often has no host Chrome path, and the
-    // CDN plays with Referer alone (same as pasting the raw m3u8 in a browser).
-    if (feedDirectOk || !embedUrl) {
+async function resolvePlaybackContext(
+    embedUrl,
+    streamUrl,
+    feedReferer,
+    feedHeaders,
+    feedDirectOk,
+    { isManifest = false } = {}
+) {
+    if (!embedUrl) {
         return {
             upstreamUrl: streamUrl,
             referer: feedReferer,
@@ -180,6 +184,38 @@ async function resolvePlaybackContext(embedUrl, streamUrl, feedReferer, feedHead
             directOk: feedDirectOk,
             manifestBaseUrl: streamUrl,
             resolvedFromEmbed: false,
+        };
+    }
+
+    // TimStreams (d=1): junksonus playlists often stay HTTP 200 after TikTok segment
+    // signatures expire (x-expires) → every .image segment 403s. On the first
+    // manifest hit, resolve a fresh signed m3u8 from the grandemx embed (cached).
+    // Segments still go through /proxy so WebP-TS can be unwrapped for Roku/VLC.
+    if (feedDirectOk) {
+        if (!isManifest) {
+            return {
+                upstreamUrl: streamUrl,
+                referer: feedReferer,
+                extraHeaders: feedHeaders,
+                directOk: true,
+                manifestBaseUrl: streamUrl,
+                resolvedFromEmbed: false,
+            };
+        }
+
+        let stream = getCachedStream(embedUrl);
+        if (!stream) {
+            console.log('  - TimStreams: refreshing signed m3u8 from embed (once, then cached)');
+            stream = await getResolvedStream(embedUrl);
+        }
+        const freshUrl = stream.streamUrl || streamUrl;
+        return {
+            upstreamUrl: freshUrl,
+            referer: stream.referer || feedReferer,
+            extraHeaders: {},
+            directOk: true,
+            manifestBaseUrl: freshUrl,
+            resolvedFromEmbed: Boolean(stream.streamUrl && stream.streamUrl !== streamUrl),
         };
     }
 
@@ -225,7 +261,14 @@ app.get('/proxy/*b64Payload', async (req, res) => {
     }
 
     try {
-        let ctx = await resolvePlaybackContext(embedUrl, streamUrl, referer, extraHeaders, directOk);
+        let ctx = await resolvePlaybackContext(
+            embedUrl,
+            streamUrl,
+            referer,
+            extraHeaders,
+            directOk,
+            { isManifest: isManifestRequest }
+        );
 
         if (ctx.resolvedFromEmbed) {
             console.log(`  - Ignoring feed m3u8; using fresh resolve: ${ctx.upstreamUrl}`);
@@ -248,7 +291,14 @@ app.get('/proxy/*b64Payload', async (req, res) => {
         if (response.statusCode >= 300 && isManifestRequest && embedUrl) {
             console.log(`  - Manifest fetch failed (${response.statusCode}), re-resolving from embed...`);
             clearResolvedStream(embedUrl);
-            ctx = await resolvePlaybackContext(embedUrl, streamUrl, referer, extraHeaders, directOk);
+            ctx = await resolvePlaybackContext(
+                embedUrl,
+                streamUrl,
+                referer,
+                extraHeaders,
+                directOk,
+                { isManifest: true }
+            );
             ({ response, mode } = await fetchUpstream(
                 ctx.upstreamUrl,
                 {
@@ -271,6 +321,17 @@ app.get('/proxy/*b64Payload', async (req, res) => {
             if (debug && bodyPreview) {
                 console.error(`  - Response preview: ${bodyPreview}`);
             }
+            // Stale TikTok signatures: drop cached TimStreams resolve so the next
+            // playlist request re-opens grandemx for a fresh signed m3u8.
+            if (
+                response.statusCode === 403 &&
+                !isManifestRequest &&
+                directOk &&
+                embedUrl
+            ) {
+                console.log('  - Clearing TimStreams embed cache after segment 403');
+                clearResolvedStream(embedUrl);
+            }
             res.status(response.statusCode).send(`Upstream returned ${response.statusCode}`);
             return;
         }
@@ -279,8 +340,6 @@ app.get('/proxy/*b64Payload', async (req, res) => {
         res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
 
         if (isManifestRequest) {
-            console.log('  - Rewriting manifest segment URLs...');
-
             const playlist = typeof response.body === 'string'
                 ? response.body
                 : response.body.toString('utf8');
@@ -290,6 +349,8 @@ app.get('/proxy/*b64Payload', async (req, res) => {
                 res.status(502).send('Upstream manifest empty or invalid');
                 return;
             }
+
+            console.log('  - Rewriting manifest segment URLs...');
 
             const KEY_TAG = '#EXT-X-KEY:';
             const rewrittenLines = [];
