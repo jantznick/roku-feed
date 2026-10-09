@@ -18,12 +18,16 @@ const port = process.env.PORT || 8787;
 const proxyHost = process.env.PROXY_HOST || '192.168.1.50:8787';
 const debug = process.env.PROXY_DEBUG === 'true';
 
-const PROXY_VERSION = 'embed-first-v14';
+const PROXY_VERSION = 'embed-first-v16-webp-ts';
 
 // GOAT disguises each MPEG-TS segment as a tiny PNG so it can live on TikTok's
 // image CDN. The real TS payload starts right after the PNG's IEND chunk. Strip
 // the PNG wrapper so players (VLC, Roku) get clean MPEG-TS they can decode.
 const PNG_SIGNATURE = Buffer.from('89504e470d0a1a0a', 'hex');
+const RIFF_MAGIC = Buffer.from('RIFF');
+const WEBP_MAGIC = Buffer.from('WEBP');
+const MPEG_TS_PACKET_SIZE = 188;
+const MPEG_TS_SYNC = 0x47;
 
 function unwrapGoatSegment(body) {
     if (!Buffer.isBuffer(body) || body.length < 8) {
@@ -40,6 +44,71 @@ function unwrapGoatSegment(body) {
     const payload = body.subarray(tsStart);
     console.log(`  - Unwrapped GOAT PNG segment: ${body.length} -> ${payload.length} bytes`);
     return payload;
+}
+
+/**
+ * TimStreams / junksonus segments arrive as a fake WebP (RIFF…WEBP) whose payload
+ * is raw MPEG-TS. Find a sustained 0x47 sync run (188-byte packets) and return it.
+ * Does not modify PNG GOAT handling — call after unwrapGoatSegment when unchanged.
+ */
+function unwrapWebpTsSegment(body) {
+    if (!Buffer.isBuffer(body) || body.length < 16) {
+        return body;
+    }
+    if (!body.subarray(0, 4).equals(RIFF_MAGIC) || !body.subarray(8, 12).equals(WEBP_MAGIC)) {
+        return body;
+    }
+
+    const minPackets = 3;
+    const searchLimit = Math.min(body.length, 64 * 1024);
+    for (let i = 0; i < searchLimit; i++) {
+        if (body[i] !== MPEG_TS_SYNC) {
+            continue;
+        }
+        let packets = 0;
+        let offset = i;
+        while (
+            offset + MPEG_TS_PACKET_SIZE <= body.length &&
+            body[offset] === MPEG_TS_SYNC
+        ) {
+            packets++;
+            offset += MPEG_TS_PACKET_SIZE;
+        }
+        if (packets >= minPackets) {
+            const payload = body.subarray(i, i + packets * MPEG_TS_PACKET_SIZE);
+            console.log(
+                `  - Unwrapped WebP-TS segment: ${body.length} -> ${payload.length} bytes ` +
+                    `(offset ${i}, ${packets} packets)`
+            );
+            return payload;
+        }
+    }
+
+    console.log('  - WebP segment had no sustained MPEG-TS sync run; passing through');
+    return body;
+}
+
+/** PNG GOAT first (Streamed), then WebP-TS (TimStreams); otherwise passthrough. */
+function unwrapDisguisedSegment(body) {
+    const afterPng = unwrapGoatSegment(body);
+    if (afterPng !== body) {
+        return afterPng;
+    }
+    return unwrapWebpTsSegment(body);
+}
+
+/**
+ * Express 5 named wildcard (`*b64Payload`) may return a string or path-segment array.
+ * Standard base64 payloads can contain `/`, so re-join segments.
+ */
+function extractB64Payload(param) {
+    if (Array.isArray(param)) {
+        return param.join('/');
+    }
+    if (typeof param === 'string') {
+        return param.replace(/^\//, '');
+    }
+    return '';
 }
 
 function previewBody(body, maxLines = 6) {
@@ -130,8 +199,14 @@ async function resolvePlaybackContext(embedUrl, streamUrl, feedReferer, feedHead
 }
 
 // Format: /proxy/{BASE64_JSON_PAYLOAD} where payload is { u, r, h?, e?, d? }
-app.get('/proxy/:b64Payload', async (req, res) => {
-    const { b64Payload } = req.params;
+// Use a named wildcard so standard base64 `/` inside the payload is not truncated
+// by Express's single-segment `:param` matcher (TimStreams TikTok segment rewrites).
+app.get('/proxy/*b64Payload', async (req, res) => {
+    const b64Payload = extractB64Payload(req.params.b64Payload);
+    if (!b64Payload) {
+        res.status(400).send('Missing proxy payload');
+        return;
+    }
     const { url: streamUrl, referer, extraHeaders, embedUrl, directOk } = decodeProxyPayload(b64Payload);
     const isManifestRequest = isManifestUrl(streamUrl);
 
@@ -269,7 +344,7 @@ app.get('/proxy/:b64Payload', async (req, res) => {
             logManifestPreview('Sending manifest to client', rewrittenPlaylist);
             res.send(rewrittenPlaylist);
         } else {
-            const segmentBody = unwrapGoatSegment(response.body);
+            const segmentBody = unwrapDisguisedSegment(response.body);
             console.log('  - Piping segment to client...');
             res.setHeader('Content-Type', 'video/MP2T');
             res.send(segmentBody);
