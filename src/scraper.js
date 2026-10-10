@@ -187,6 +187,132 @@ function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Max times we'll yank the schedule tab back to onhockey if adware hijacks it. */
+const MAX_ADWARE_RECOVERIES = 20;
+
+/**
+ * True when the URL is still on onhockey (or a harmless transitional URL).
+ * Adware campaigns often replace the main frame with mcafee / random click domains.
+ * @param {string} url
+ */
+function isOnHockeyScheduleUrl(url) {
+    if (!url || url === 'about:blank' || url.startsWith('chrome-error://')) return true;
+    try {
+        const { hostname, protocol } = new URL(url);
+        if (protocol !== 'http:' && protocol !== 'https:') return true;
+        const host = hostname.replace(/^www\./i, '').toLowerCase();
+        return host === 'onhockey.tv' || host.endsWith('.onhockey.tv');
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Keep the schedule tab on onhockey.tv while the list page loads.
+ * onhockey injects adware that (1) replaces the main frame and/or (2) opens junk tabs.
+ * Guard is schedule-load only — dispose before deep-scrape embeds open other origins.
+ *
+ * @param {import('puppeteer').Browser} browser
+ * @param {import('puppeteer').Page} page
+ */
+async function installOnHockeyStayGuard(browser, page) {
+    let active = true;
+    let recovering = false;
+    let redirectCount = 0;
+
+    await page.evaluateOnNewDocument(() => {
+        try {
+            window.open = () => null;
+        } catch {
+            // ignore
+        }
+    });
+
+    const onTargetCreated = async (target) => {
+        if (!active || target.type() !== 'page') return;
+        try {
+            const popup = await target.page();
+            if (!popup || popup === page) return;
+            const url = (target.url() || popup.url() || '').slice(0, 120);
+            console.warn(`  … closing popup during schedule load: ${url || '(blank)'}`);
+            await popup.close().catch(() => {});
+        } catch {
+            // target may already be gone
+        }
+    };
+    browser.on('targetcreated', onTargetCreated);
+
+    async function recoverIfHijacked() {
+        if (!active || recovering) return false;
+        if (page.isClosed()) return false;
+
+        let url = '';
+        try {
+            url = page.url();
+        } catch {
+            return false;
+        }
+        if (isOnHockeyScheduleUrl(url) || !/^https?:/i.test(url)) return false;
+
+        if (redirectCount >= MAX_ADWARE_RECOVERIES) {
+            console.warn(
+                `  … adware redirected main frame ${redirectCount} times; giving up recoveries`
+            );
+            return false;
+        }
+
+        recovering = true;
+        redirectCount += 1;
+        console.warn(
+            `  … main frame left onhockey (${url.slice(0, 100)}); returning (#${redirectCount})`
+        );
+        try {
+            await page.goto(SCRAPER_URL, {
+                waitUntil: 'domcontentloaded',
+                timeout: 90000,
+                referer: 'https://www.google.com/',
+            });
+            await sleep(1000 + Math.random() * 500);
+        } catch (error) {
+            console.warn(`  … adware recovery navigation failed: ${error.message}`);
+        } finally {
+            recovering = false;
+        }
+        return true;
+    }
+
+    const onFrameNavigated = (frame) => {
+        if (!active || frame !== page.mainFrame()) return;
+        // Fire-and-forget; wait loop also polls recoverIfHijacked.
+        recoverIfHijacked().catch(() => {});
+    };
+    page.on('framenavigated', onFrameNavigated);
+
+    return {
+        recoverIfHijacked,
+        get redirectCount() {
+            return redirectCount;
+        },
+        dispose() {
+            active = false;
+            // Puppeteer Browser uses EventEmitter-style `.off`; Page may vary by version.
+            for (const [emitter, event, handler] of [
+                [browser, 'targetcreated', onTargetCreated],
+                [page, 'framenavigated', onFrameNavigated],
+            ]) {
+                try {
+                    if (typeof emitter.off === 'function') emitter.off(event, handler);
+                    else if (typeof emitter.removeListener === 'function') {
+                        emitter.removeListener(event, handler);
+                    }
+                } catch {
+                    // ignore
+                }
+            }
+        },
+    };
+}
+
 /**
  * Build a desktop Chrome UA that matches the launched browser's version.
  * A stale major (e.g. Chrome/131 on Chrome 154) trips Cloudflare fingerprints.
@@ -380,17 +506,25 @@ async function getChallengeState(page) {
  * If clearance cookies look stale (still challenged after a while), clears them and
  * reloads once — without a full multi-attempt loop.
  * @param {import('puppeteer').Page} page
- * @param {{ timeoutMs?: number, allowStaleCookieReload?: boolean }} [opts]
+ * @param {{ timeoutMs?: number, allowStaleCookieReload?: boolean, stayGuard?: { recoverIfHijacked: () => Promise<boolean>, redirectCount: number } }} [opts]
  */
-async function waitForGameTable(page, { timeoutMs = 120000, allowStaleCookieReload = false } = {}) {
+async function waitForGameTable(
+    page,
+    { timeoutMs = 120000, allowStaleCookieReload = false, stayGuard = null } = {}
+) {
     const deadline = Date.now() + timeoutMs;
     let lastLog = 0;
     let didStaleReload = false;
     const startedAt = Date.now();
 
     while (Date.now() < deadline) {
+        if (stayGuard) {
+            await stayGuard.recoverIfHijacked();
+        }
+
         const state = await getChallengeState(page);
-        if (state.hasTable && !state.justAMoment) {
+        const onOnHockey = isOnHockeyScheduleUrl(state.url || page.url());
+        if (state.hasTable && !state.justAMoment && onOnHockey) {
             return state;
         }
 
@@ -402,6 +536,7 @@ async function waitForGameTable(page, { timeoutMs = 120000, allowStaleCookieRelo
             allowStaleCookieReload &&
             !didStaleReload &&
             challenged &&
+            onOnHockey &&
             elapsed > 20000
         ) {
             didStaleReload = true;
@@ -421,9 +556,11 @@ async function waitForGameTable(page, { timeoutMs = 120000, allowStaleCookieRelo
         if (now - lastLog > 10000) {
             lastLog = now;
             const secs = Math.round(elapsed / 1000);
+            const redirects = stayGuard?.redirectCount ? ` adwareRecoveries=${stayGuard.redirectCount}` : '';
             console.log(
                 `  … waiting for onhockey schedule (${secs}s)` +
-                    ` title="${state.title}" challenge=${challenged}`
+                    ` title="${state.title}" challenge=${challenged}` +
+                    ` url=${(state.url || '').slice(0, 60)}${redirects}`
             );
         }
 
@@ -438,45 +575,60 @@ async function waitForGameTable(page, { timeoutMs = 120000, allowStaleCookieRelo
     }
 
     const finalState = await getChallengeState(page).catch(() => ({}));
+    const redirects = stayGuard?.redirectCount ? ` adwareRecoveries=${stayGuard.redirectCount}` : '';
     throw new Error(
         `Timed out waiting for #gametable` +
-            (finalState.title ? ` (title="${finalState.title}")` : '')
+            ` (title="${finalState.title || ''}"` +
+            ` url="${(finalState.url || page.url() || '').slice(0, 80)}"${redirects})`
     );
 }
 
 /**
  * Load onhockey homepage and wait for #gametable (single attempt + cookie reuse).
+ * Installs a short-lived stay-guard so adware cannot replace the main frame / spawn tabs.
  * @param {import('puppeteer').Page} page
  */
 async function navigateToOnHockeySchedule(page) {
     const savedCookies = await readSavedCfCookies();
     const hasSavedCookies = savedCookies.length > 0;
+    const stayGuard = await installOnHockeyStayGuard(page.browser(), page);
 
-    if (hasSavedCookies) {
-        try {
-            await page.setCookie(...savedCookies);
-            console.log(
-                `Loaded ${savedCookies.length} saved onhockey cookie(s) from ${path.basename(CF_COOKIE_PATH)}`
-            );
-        } catch (error) {
-            console.warn(`Could not apply saved onhockey cookies: ${error.message}`);
+    try {
+        if (hasSavedCookies) {
+            try {
+                await page.setCookie(...savedCookies);
+                console.log(
+                    `Loaded ${savedCookies.length} saved onhockey cookie(s) from ${path.basename(CF_COOKIE_PATH)}`
+                );
+            } catch (error) {
+                console.warn(`Could not apply saved onhockey cookies: ${error.message}`);
+            }
         }
+
+        console.log(`Navigating to ${SCRAPER_URL} (single attempt)...`);
+        await page.goto(SCRAPER_URL, {
+            waitUntil: 'domcontentloaded',
+            timeout: 90000,
+            referer: 'https://www.google.com/',
+        });
+        await stayGuard.recoverIfHijacked();
+
+        // Let the challenge script start before we poll.
+        await sleep(2000 + Math.random() * 1500);
+        await waitForGameTable(page, {
+            timeoutMs: 120000,
+            allowStaleCookieReload: hasSavedCookies,
+            stayGuard,
+        });
+        await saveCfCookies(page);
+        if (stayGuard.redirectCount > 0) {
+            console.log(
+                `Schedule loaded after ${stayGuard.redirectCount} adware main-frame recovery(ies).`
+            );
+        }
+    } finally {
+        stayGuard.dispose();
     }
-
-    console.log(`Navigating to ${SCRAPER_URL} (single attempt)...`);
-    await page.goto(SCRAPER_URL, {
-        waitUntil: 'domcontentloaded',
-        timeout: 90000,
-        referer: 'https://www.google.com/',
-    });
-
-    // Let the challenge script start before we poll.
-    await sleep(2000 + Math.random() * 1500);
-    await waitForGameTable(page, {
-        timeoutMs: 120000,
-        allowStaleCookieReload: hasSavedCookies,
-    });
-    await saveCfCookies(page);
 }
 
 /**
