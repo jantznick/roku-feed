@@ -12,6 +12,9 @@ const PROXY_REWRITE_FROM = process.env.PROXY_REWRITE_FROM || '';
 const PROXY_REWRITE_TO = process.env.PROXY_REWRITE_TO || '';
 /** LAN HLS proxy origin, e.g. http://192.168.1.50:8787 — required for HTTPS pages (mixed content). */
 const HLS_PROXY_UPSTREAM = normalizeUpstream(process.env.HLS_PROXY_UPSTREAM || '');
+/** PlexFlix scores sidecar origin, e.g. http://192.168.1.50:8096 — optional live scores. */
+const SCORES_URL = normalizeUpstream(process.env.SCORES_URL || '');
+const SCORES_TOKEN = String(process.env.SCORES_TOKEN || '').trim();
 const HLS_MOUNT = '/hls';
 
 function normalizeUpstream(raw) {
@@ -35,7 +38,66 @@ app.get('/api/config', (_req, res) => {
     hlsProxyUpstream: HLS_PROXY_UPSTREAM || null,
     // Always advertise the mount so the client can rewrite LAN URLs even if feed rewrite failed.
     hlsMount: HLS_MOUNT,
+    scoresConfigured: Boolean(SCORES_URL),
   });
+});
+
+/**
+ * Batch-resolve feed titles against the PlexFlix scores sidecar.
+ * Browser stays same-origin; SCORES_URL is server-only (like FEED_URL).
+ * Soft-fails when unset so the viewer still works without scores.
+ */
+app.post('/api/scores/resolve', express.json({ limit: '1mb' }), async (req, res) => {
+  if (!SCORES_URL) {
+    res.json({ ok: true, skipped: true, matched: 0, total: 0, results: [] });
+    return;
+  }
+
+  const items = Array.isArray(req.body?.items) ? req.body.items : [];
+  if (items.length === 0) {
+    res.json({ ok: true, matched: 0, total: 0, results: [] });
+    return;
+  }
+  if (items.length > 200) {
+    res.status(400).json({ error: 'max 200 items' });
+    return;
+  }
+
+  const headers = {
+    Accept: 'application/json',
+    'Content-Type': 'application/json',
+  };
+  if (SCORES_TOKEN) {
+    headers.Authorization = `Bearer ${SCORES_TOKEN}`;
+    headers['X-Scores-Token'] = SCORES_TOKEN;
+  }
+
+  try {
+    const upstream = await fetch(`${SCORES_URL}/v1/resolve`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ items }),
+      signal: AbortSignal.timeout(20000),
+    });
+    const text = await upstream.text();
+    let payload;
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      res.status(502).json({ error: 'Scores upstream returned non-JSON' });
+      return;
+    }
+    if (!upstream.ok) {
+      res.status(502).json({
+        error: payload.error || `Scores upstream returned ${upstream.status}`,
+      });
+      return;
+    }
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(payload);
+  } catch (error) {
+    res.status(502).json({ error: error.message || 'Failed to reach scores service' });
+  }
 });
 
 /**
@@ -247,5 +309,10 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`HLS proxy: ${HLS_MOUNT} → ${HLS_PROXY_UPSTREAM}`);
   } else {
     console.log('HLS_PROXY_UPSTREAM unset — HTTPS pages will block http:// LAN stream URLs (mixed content)');
+  }
+  if (SCORES_URL) {
+    console.log(`Scores: /api/scores/resolve → ${SCORES_URL}/v1/resolve`);
+  } else {
+    console.log('SCORES_URL unset — live score lines disabled');
   }
 });

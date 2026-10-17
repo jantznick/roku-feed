@@ -26,4 +26,8 @@ services:
       # Proxies HLS via same-origin /hls so the browser is not blocked by Mixed Content.
       # Example: HLS_PROXY_UPSTREAM=http://192.168.1.50:8787
       HLS_PROXY_UPSTREAM: "${HLS_PROXY_UPSTREAM:-}"
+      # Optional PlexFlix scores sidecar (plexflix/scores). Leave empty to skip.
+      # Example: SCORES_URL=http://192.168.1.50:8096
+      SCORES_URL: "${SCORES_URL:-}"
+      SCORES_TOKEN: "${SCORES_TOKEN:-}"
     restart: unless-stopped
