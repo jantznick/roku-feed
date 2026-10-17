@@ -25,11 +25,17 @@ let activeLeague = '';
 let hls = null;
 /** @type {number | null} */
 let feedAgeTimer = null;
-/** @type {{ hlsProxyUpstream: string | null, hlsMount: string }} */
+/** @type {{ hlsProxyUpstream: string | null, hlsMount: string, scoresConfigured: boolean }} */
 let appConfig = {
   hlsProxyUpstream: null,
   hlsMount: '/hls',
+  scoresConfigured: false,
 };
+
+/** @type {Map<string, { scoreLine: string, displayStatus: string, matched: boolean }>} */
+const scoresByKey = new Map();
+/** @type {number | null} */
+let scoresTimer = null;
 
 /**
  * Rewrite LAN proxy URLs to same-origin /hls so HTTPS pages are not blocked by Mixed Content.
@@ -92,10 +98,75 @@ async function loadConfig() {
     appConfig = {
       hlsProxyUpstream: payload.hlsProxyUpstream || null,
       hlsMount: payload.hlsMount || '/hls',
+      scoresConfigured: Boolean(payload.scoresConfigured),
     };
   } catch {
     // keep defaults — rewriteToHls still maps /proxy paths on foreign hosts
   }
+}
+
+function scoreKey(league, game, index) {
+  const id = game?.id || game?.channelId || '';
+  if (id) return `${league}::${id}`;
+  return `${league}::${index}::${game?.title || ''}`;
+}
+
+function collectScoreItems() {
+  const items = [];
+  if (!feed) return items;
+  for (const league of leagues) {
+    const games = feed[league] || [];
+    games.forEach((game, index) => {
+      const title = game?.title || game?.name;
+      if (!title) return;
+      items.push({
+        id: scoreKey(league, game, index),
+        title,
+        league,
+      });
+    });
+  }
+  return items;
+}
+
+async function loadScores() {
+  if (!appConfig.scoresConfigured || !feed) return;
+
+  const items = collectScoreItems();
+  if (!items.length) return;
+
+  try {
+    const res = await fetch('/api/scores/resolve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ items }),
+    });
+    const payload = await res.json();
+    if (!res.ok || payload.skipped) return;
+
+    scoresByKey.clear();
+    for (const row of payload.results || []) {
+      if (!row?.id) continue;
+      if (row.matched) {
+        scoresByKey.set(row.id, {
+          matched: true,
+          scoreLine: row.scoreLine || '',
+          displayStatus: row.displayStatus || row.shortDetail || '',
+        });
+      }
+    }
+    renderGames();
+  } catch {
+    // Soft fail — feed viewer still works without scores
+  }
+}
+
+function startScoresTimer() {
+  if (scoresTimer) clearInterval(scoresTimer);
+  if (!appConfig.scoresConfigured) return;
+  scoresTimer = window.setInterval(() => {
+    loadScores();
+  }, 45000);
 }
 
 function setStatus(message, isError = false) {
@@ -162,13 +233,16 @@ async function loadFeed() {
     const savedLeague = localStorage.getItem(LEAGUE_STORAGE_KEY);
     activeLeague = leagues.includes(savedLeague) ? savedLeague : (leagues[0] || '');
 
+    scoresByKey.clear();
     renderLeagues();
     renderGames();
     startFeedAgeTimer();
     setStatus(`${leagues.length} league${leagues.length === 1 ? '' : 's'} loaded`);
+    loadScores().then(() => startScoresTimer());
   } catch (error) {
     feed = null;
     leagues = [];
+    scoresByKey.clear();
     els.leagueNav.innerHTML = '';
     els.gameList.innerHTML = '<p class="empty">Could not load feed.</p>';
     updateFeedAge();
@@ -203,26 +277,44 @@ function renderGames() {
     return;
   }
 
-  for (const game of games) {
+  games.forEach((game, index) => {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'game-card';
     const streams = game?.content?.videos?.length || 0;
+    const score = scoresByKey.get(scoreKey(activeLeague, game, index));
+    const metaBits = [];
+    if (game.shortDescription || game.startTime) {
+      metaBits.push(game.shortDescription || game.startTime);
+    }
+    metaBits.push(`${streams} stream${streams === 1 ? '' : 's'}`);
+    const scoreHtml = score?.matched && score.scoreLine
+      ? `<p class="score-line"><span class="score">${escapeHtml(score.scoreLine)}</span>${
+          score.displayStatus ? ` · ${escapeHtml(score.displayStatus)}` : ''
+        }</p>`
+      : '';
     btn.innerHTML = `
       <img src="${escapeAttr(game.thumbnail || '')}" alt="" loading="lazy" />
       <div>
         <h3>${escapeHtml(game.title || 'Untitled')}</h3>
-        <p>${escapeHtml(game.shortDescription || game.startTime || '')} · ${streams} stream${streams === 1 ? '' : 's'}</p>
+        ${scoreHtml}
+        <p>${escapeHtml(metaBits.join(' · '))}</p>
       </div>
     `;
     btn.addEventListener('click', () => openGame(game, activeLeague));
     els.gameList.appendChild(btn);
-  }
+  });
 }
 
 function openGame(game, league) {
   els.playerSection.classList.remove('hidden');
-  els.nowLeague.textContent = league;
+  const games = feed?.[league] || [];
+  const index = games.indexOf(game);
+  const score = scoresByKey.get(scoreKey(league, game, index >= 0 ? index : 0));
+  const leagueLabel = score?.matched && score.scoreLine
+    ? `${league} · ${score.scoreLine}${score.displayStatus ? ` · ${score.displayStatus}` : ''}`
+    : league;
+  els.nowLeague.textContent = leagueLabel;
   els.nowTitle.textContent = game.title || 'Stream';
   renderQualities(game);
   const first = game?.content?.videos?.[0];

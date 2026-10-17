@@ -26,6 +26,8 @@ Open `http://<server-lan-ip>:$WEB_PORT` (default **8080**), or your reverse-prox
 | `WEB_PORT` | Host port mapped to the container (default `8080`) |
 | `HLS_PROXY_UPSTREAM` | LAN HLS proxy origin (e.g. `http://192.168.1.50:8787`). Rewrites feed + m3u8 URLs to same-origin `/hls` and proxies traffic. **Required for HTTPS viewers.** |
 | `PROXY_REWRITE_FROM` / `PROXY_REWRITE_TO` | Optional extra host rewrite inside feed video URLs |
+| `SCORES_URL` | Optional PlexFlix scores sidecar (`http://192.168.1.50:8096`). Enables live score lines on game cards via `/api/scores/resolve`. |
+| `SCORES_TOKEN` | Optional shared secret if the scores sidecar has `SCORES_TOKEN` set |
 
 The browser never fetches the feed from S3/B2 directly (CORS). The container proxies `/api/feed`.
 
@@ -65,6 +67,7 @@ cd web
 npm install
 FEED_URL='https://…/feed.json' \
 HLS_PROXY_UPSTREAM='http://192.168.1.50:8787' \
+SCORES_URL='http://192.168.1.50:8096' \
 PORT=8091 npm start
 ```
 

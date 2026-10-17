@@ -230,6 +230,17 @@ button.active {
   font-size: 0.82rem;
 }
 
+.game-card .score-line {
+  margin: 0.3rem 0 0;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.game-card .score-line .score {
+  color: var(--accent);
+}
+
 .empty {
   color: var(--muted);
   padding: 2rem 0.5rem;
