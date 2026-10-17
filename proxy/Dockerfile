@@ -8,6 +8,7 @@ FROM node:20-bookworm-slim
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
+        ffmpeg \
         fonts-liberation \
         libasound2 \
         libatk-bridge2.0-0 \
