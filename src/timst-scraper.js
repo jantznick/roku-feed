@@ -18,6 +18,7 @@ import {
     isBrowserConnected,
     isBrowserConnectionError,
     safeClosePage,
+    safeNewPage,
 } from './puppeteer-utils.js';
 import {
     shouldReuseStreams,
@@ -112,7 +113,7 @@ async function resolveGrandeMxSignedUrl(browser, shortUrl, label) {
     let capturedM3u8 = null;
 
     try {
-        page = await browser.newPage();
+        page = await safeNewPage(browser);
         await page.setCacheEnabled(false);
         await page.setUserAgent(BROWSER_USER_AGENT);
         await page.setExtraHTTPHeaders({
