@@ -56,7 +56,15 @@ async function resolveEmbedJobs(browser, resolveJobs) {
             if (!isBrowserConnected(browser)) {
                 return null;
             }
-            return getFinalStreamUrl(browser, job.embedUrl, job.sourceName);
+            try {
+                return await getFinalStreamUrl(browser, job.embedUrl, job.sourceName);
+            } catch (error) {
+                // Keep the pool alive — one embed must not abort the whole Streamed pass.
+                console.warn(
+                    `  -> Embed resolve failed (${job.sourceName}): ${error.message}`
+                );
+                return null;
+            }
         },
         { shouldStop: () => !isBrowserConnected(browser) }
     );

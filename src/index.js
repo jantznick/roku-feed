@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { launchBrowser, describePuppeteerMode } from './puppeteer-config.js';
+import { installPuppeteerProcessGuards } from './puppeteer-utils.js';
 import fs from 'fs/promises';
 import path from 'path';
 import { scrapeMainPage, deepScrapeGames } from './scraper.js';
@@ -13,6 +14,9 @@ import { uploadImages, uploadFeed, deleteImages } from './uploader.js';
 import { logLeagues } from './league-logger.js';
 import { getEmbedConcurrency } from './async-pool.js';
 import { getStreamReuseTtlMs } from './stream-reuse.js';
+
+// Stealth can throw TargetCloseError off the await chain during concurrent newPage().
+installPuppeteerProcessGuards();
 
 const FEED_FILE_PATH = path.resolve(process.cwd(), 'dist', 'feed.json');
 

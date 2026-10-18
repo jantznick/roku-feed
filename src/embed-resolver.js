@@ -13,6 +13,7 @@ import {
     isBrowserConnectionError,
     isFrameDetachedError,
     safeClosePage,
+    safeNewPage,
 } from './puppeteer-utils.js';
 
 const PLAY_SELECTORS = [
@@ -272,7 +273,7 @@ export async function resolveStreamFromEmbed(browser, embedUrl, options = {}) {
     let bodyCapture = null;
 
     try {
-        page = await browser.newPage();
+        page = await safeNewPage(browser);
         await page.setCacheEnabled(false);
         await page.setUserAgent(await userAgentForBrowser(browser));
 

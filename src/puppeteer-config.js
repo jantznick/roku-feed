@@ -3,6 +3,7 @@ import path from 'path';
 import puppeteer from 'puppeteer';
 import puppeteerExtra from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+import { installPuppeteerProcessGuards } from './puppeteer-utils.js';
 
 let stealthApplied = false;
 
@@ -10,6 +11,8 @@ function applyStealth() {
     if (stealthApplied) return;
     puppeteerExtra.use(StealthPlugin());
     stealthApplied = true;
+    // Stealth onPageCreated can throw TargetCloseError off the await chain.
+    installPuppeteerProcessGuards();
 }
 
 /** Prefer a real Chrome binary when present (passes CF more often than bundled Chromium). */

@@ -1,6 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { safeClosePage, isBrowserConnected } from './puppeteer-utils.js';
+import { safeClosePage, safeNewPage, isBrowserConnected } from './puppeteer-utils.js';
 import { mapPool, getEmbedConcurrency } from './async-pool.js';
 import { resolveStreamFromEmbed } from './embed-resolver.js';
 
@@ -637,7 +637,7 @@ async function navigateToOnHockeySchedule(page) {
  * @returns {Promise<any[]>} A promise that resolves to an array of scraped games.
  */
 export async function scrapeMainPage(browser) {
-    const page = await browser.newPage();
+    const page = await safeNewPage(browser);
     const isDebug = process.env.DEBUG === 'true';
 
     try {
@@ -835,7 +835,7 @@ function pickBrightcoveHlsUrl(payload) {
  */
 async function getEmbedStreamUrl(browser, embedUrl, label = 'embed') {
     console.log(`  -> Deep scraping ${label} URL: ${embedUrl}`);
-    const page = await browser.newPage();
+    const page = await safeNewPage(browser);
     let streamUrl = null;
     let resolveStreamUrl;
 
