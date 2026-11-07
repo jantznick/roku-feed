@@ -2,6 +2,7 @@ import {
     fetchManifestOnPage,
     getLatestManifestBody,
     getLatestManifestSourceUrl,
+    invalidateManifestForMedia,
     waitForLatestManifestBody,
 } from '../src/manifest-capture.js';
 import { launchBrowser as launchStealthBrowser, describePuppeteerMode } from '../src/puppeteer-config.js';
@@ -494,7 +495,7 @@ async function tryDirectSegmentFetch(url, referer, extraHeaders = {}) {
         });
         if (!response.ok) {
             logStep(`Direct segment fetch HTTP ${response.status}`);
-            return null;
+            return { failedStatus: response.status };
         }
         const body = Buffer.from(await response.arrayBuffer());
         logStep(`Direct segment fetch OK (${body.length} bytes)`);
@@ -540,8 +541,16 @@ export async function fetchViaBrowser(url, { embedUrl, referer, extraHeaders = {
 
     if (!isText) {
         const direct = await tryDirectSegmentFetch(url, referer, extraHeaders);
-        if (direct) {
+        if (direct && !direct.failedStatus) {
             return direct;
+        }
+        // Daddy (and similar): expired playlist tokens → segment 404. Drop the
+        // frozen capture so the next manifest poll waits for a fresh player body
+        // instead of rewriting the same dead segment paths again.
+        if (direct?.failedStatus === 404 && embedAlive) {
+            if (invalidateManifestForMedia(embedPage, url)) {
+                logStep('Invalidated stale embed playlist after segment 404');
+            }
         }
         logStep('Direct segment fetch failed; trying embed-page browser fetch');
 
@@ -551,6 +560,11 @@ export async function fetchViaBrowser(url, { embedUrl, referer, extraHeaders = {
                 return await fetchSegmentFromBrowserPage(embedPage, url, `embed:${embedUrl}`);
             } catch (embedError) {
                 logStep(`Embed-page segment fetch failed (${embedError.message}); falling back to session tab`);
+                if (/ERR_HTTP_RESPONSE_CODE_FAILURE|404|410|403/.test(embedError.message)) {
+                    if (invalidateManifestForMedia(embedPage, url)) {
+                        logStep('Invalidated stale embed playlist after browser segment failure');
+                    }
+                }
             }
         }
     }

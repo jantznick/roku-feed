@@ -175,6 +175,28 @@ export async function attachManifestCapture(page, log = () => {}) {
             return this.getLatestEntry(preferredUrl)?.url || null;
         },
 
+        /**
+         * Drop playlists that share a directory with this segment URL.
+         * Daddy tokenized segment paths expire with their playlist — after a 404,
+         * the next manifest poll must wait for a fresh player capture.
+         */
+        invalidateForMediaUrl(mediaUrl) {
+            const mediaPath = pathnameOf(mediaUrl);
+            if (!mediaPath) {
+                return false;
+            }
+            const mediaDir = mediaPath.replace(/\/[^/]*$/, '/');
+            let cleared = false;
+            for (const path of [...byPath.keys()]) {
+                const playlistDir = path.replace(/\/[^/]*$/, '/');
+                if (playlistDir && (mediaDir === playlistDir || mediaPath.startsWith(playlistDir))) {
+                    byPath.delete(path);
+                    cleared = true;
+                }
+            }
+            return cleared;
+        },
+
         /** @param {string} url @param {number} [timeoutMs] */
         async waitForBody(url, timeoutMs = 12000) {
             const deadline = Date.now() + timeoutMs;
@@ -319,6 +341,19 @@ export function getLatestManifestSourceUrl(page, preferredUrl = '') {
         return null;
     }
     return capture.getLatestSourceUrl?.(preferredUrl) || null;
+}
+
+/**
+ * Drop cached playlists related to a failed segment so the next poll waits for a new capture.
+ * @param {import('puppeteer').Page} page
+ * @param {string} mediaUrl
+ */
+export function invalidateManifestForMedia(page, mediaUrl) {
+    const capture = capturesByPage.get(page);
+    if (!capture || !mediaUrl) {
+        return false;
+    }
+    return capture.invalidateForMediaUrl?.(mediaUrl) || false;
 }
 
 /**
