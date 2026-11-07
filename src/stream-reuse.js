@@ -88,7 +88,7 @@ function parseNameFromQuality(quality) {
 
 /**
  * Decode a proxied feed video URL via /proxy/:payload when present.
- * Payload is standard base64 and may contain `/`, so do not stop the match at the first slash.
+ * Payload may be legacy standard base64 (with `/`) or base64url; do not stop the match at the first slash.
  * @param {string} feedUrl
  * @returns {{ url: string, referer: string, extraHeaders: Record<string, string>, embedUrl: string | null, directOk: boolean } | null}
  */
