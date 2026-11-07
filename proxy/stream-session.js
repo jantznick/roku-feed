@@ -67,6 +67,7 @@ export async function getResolvedStream(embedUrl, { force = false } = {}) {
             checkNodeReplay: true,
             captureManifestBody: true,
             keepPageOpen: true,
+            navigationRefererOnly: true,
         });
 
         if (!result?.streamUrl) {

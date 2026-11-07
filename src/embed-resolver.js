@@ -325,6 +325,10 @@ export async function resolveStreamFromEmbed(browser, embedUrl, options = {}) {
         checkNodeReplay = false,
         captureManifestBody = false,
         keepPageOpen = false,
+        // Proxy playback: send the parent-site Referer only on the embed page
+        // load. A page-wide forced Referer also hits the player's m3u8/segment
+        // requests, and CDNs like indianservers 403 that (scrape only needs URLs).
+        navigationRefererOnly = false,
     } = options;
     const log = verbose ? (...args) => console.log(...args) : () => {};
 
@@ -337,28 +341,24 @@ export async function resolveStreamFromEmbed(browser, embedUrl, options = {}) {
         await page.setUserAgent(await userAgentForBrowser(browser));
 
         const timStreams = isTimStreamsEmbed(embedUrl);
+        let parentReferer = null;
         if (timStreams) {
-            // Scraper sets tim-streams.com Referer; without it ehgembxe often
-            // never boots JW and the proxy saw 0 m3u8 candidates.
-            await page.setExtraHTTPHeaders({
-                'Accept-Language': 'en-US,en;q=0.9',
-                Referer: 'https://tim-streams.com/',
-            });
+            // Without tim-streams.com Referer ehgembxe often never boots JW.
+            parentReferer = 'https://tim-streams.com/';
         } else if (/taifood-blog/i.test(embedUrl)) {
-            await page.setExtraHTTPHeaders({
-                'Accept-Language': 'en-US,en;q=0.9',
-                Referer: 'https://ppv.st/',
-            });
+            parentReferer = 'https://ppv.st/';
         } else {
             try {
-                await page.setExtraHTTPHeaders({
-                    'Accept-Language': 'en-US,en;q=0.9',
-                    Referer: `${new URL(embedUrl).origin}/`,
-                });
+                parentReferer = `${new URL(embedUrl).origin}/`;
             } catch {
                 // malformed embed
             }
         }
+        const extraHeaders = { 'Accept-Language': 'en-US,en;q=0.9' };
+        if (parentReferer && !navigationRefererOnly) {
+            extraHeaders.Referer = parentReferer;
+        }
+        await page.setExtraHTTPHeaders(extraHeaders);
 
         if (captureManifestBody || timStreams) {
             attachAdWindowHandler(page, log);
@@ -414,7 +414,11 @@ export async function resolveStreamFromEmbed(browser, embedUrl, options = {}) {
         } else {
             const waitUntil = gotoWaitUntil(embedUrl);
             log(`-- Navigating to embed URL: ${embedUrl} (Source: ${sourceName})`);
-            await page.goto(embedUrl, { waitUntil, timeout: 45000 });
+            await page.goto(embedUrl, {
+                waitUntil,
+                timeout: 45000,
+                ...(navigationRefererOnly && parentReferer ? { referer: parentReferer } : {}),
+            });
         }
 
         // Sportplus geo-block — fail fast instead of waiting for a phantom player.
