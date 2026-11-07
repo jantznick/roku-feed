@@ -378,12 +378,8 @@ function playUrl(url, label = '') {
   const playableUrl = rewriteToHls(url);
   setStatus(label ? `Playing ${label}` : 'Playing…');
 
-  if (video.canPlayType('application/vnd.apple.mpegurl')) {
-    video.src = playableUrl;
-    video.play().catch(() => {});
-    return;
-  }
-
+  // Prefer hls.js even on Safari. Native HLS skips RewritingLoader, so leftover
+  // http://192.168… segment URLs stay mixed-content on HTTPS mobile web.
   if (window.Hls?.isSupported()) {
     hls = createHlsPlayer();
     hls.loadSource(playableUrl);
@@ -396,6 +392,12 @@ function playUrl(url, label = '') {
         setStatus(`Playback error: ${data.type} / ${data.details}`, true);
       }
     });
+    return;
+  }
+
+  if (video.canPlayType('application/vnd.apple.mpegurl')) {
+    video.src = playableUrl;
+    video.play().catch(() => {});
     return;
   }
 

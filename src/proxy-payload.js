@@ -47,7 +47,7 @@ export function extractPassthroughHeaders(requestHeaders = {}) {
     return passthrough;
 }
 
-/** @returns {string} base64 JSON payload for /proxy/:payload routes */
+/** @returns {string} base64url JSON payload for /proxy/:payload routes (no `/` or `+`) */
 export function encodeProxyPayload(url, referer, extraHeaders = {}, embedUrl = null, directOk = false) {
     const payload = {
         u: url,
@@ -62,12 +62,29 @@ export function encodeProxyPayload(url, referer, extraHeaders = {}, embedUrl = n
     if (extraHeaders && Object.keys(extraHeaders).length > 0) {
         payload.h = extraHeaders;
     }
-    return Buffer.from(JSON.stringify(payload)).toString('base64');
+    // base64url keeps payloads in a single path segment — standard base64 `/`
+    // broke Safari native HLS and some reverse proxies mid-playlist.
+    return Buffer.from(JSON.stringify(payload)).toString('base64url');
+}
+
+function decodePayloadBytes(b64Payload) {
+    // Prefer base64url; fall back to legacy standard base64 from older feeds.
+    for (const encoding of ['base64url', 'base64']) {
+        try {
+            const raw = Buffer.from(b64Payload, encoding).toString('utf8');
+            if (raw.startsWith('{') || raw.startsWith('http')) {
+                return raw;
+            }
+        } catch {
+            // try next
+        }
+    }
+    return Buffer.from(b64Payload, 'base64').toString('utf8');
 }
 
 /** @returns {{ url: string, referer: string, extraHeaders: Record<string, string>, embedUrl: string | null, directOk: boolean }} */
 export function decodeProxyPayload(b64Payload) {
-    const raw = Buffer.from(b64Payload, 'base64').toString('utf8');
+    const raw = decodePayloadBytes(b64Payload);
 
     if (raw.startsWith('{')) {
         try {

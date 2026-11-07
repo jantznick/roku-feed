@@ -26,7 +26,7 @@ const port = process.env.PORT || 8787;
 const proxyHost = process.env.PROXY_HOST || '192.168.1.50:8787';
 const debug = process.env.PROXY_DEBUG === 'true';
 
-const PROXY_VERSION = 'embed-first-v29-goat-ts-scan';
+const PROXY_VERSION = 'embed-first-v30-slim-segment-urls';
 
 function isLoopbackClient(req) {
     const ip = String(req.ip || req.socket?.remoteAddress || '');
@@ -626,16 +626,18 @@ app.get('/proxy/*b64Payload', async (req, res) => {
 
             const segmentHost = rewriteProxyHost(req);
             const loopback = isLoopbackClient(req);
-            // ffmpeg remux: loopback host + omit bulky feed headers so segment
-            // URLs stay under HLS demuxer limits (LAN PROXY_HOST is unreachable
-            // from inside the container anyway). Append .ts so ffmpeg's HLS
-            // demuxer accepts the path (-allowed_extensions ALL is unreliable
-            // across distro ffmpeg builds).
-            const rewriteHeaders = loopback ? {} : ctx.extraHeaders;
+            // Keep segment proxy URLs short:
+            // - remux/ffmpeg (loopback): no headers + fake .ts suffix
+            // - embed session present: omit cookies/headers from the URL — the
+            //   open tab (and resolve cache) already carry them. Daddy was
+            //   baking ~555B cookies into every segment URL (~1KB paths) and
+            //   clients fetched the playlist but never requested segments.
+            const rewriteHeaders = (loopback || embedUrl) ? {} : ctx.extraHeaders;
             const mediaSuffix = loopback ? '.ts' : '';
             console.log(
                 `  - Rewriting manifest segment URLs through /proxy (${segmentHost}`
-                + `${loopback ? ', remux-loopback+ts' : ''})...`
+                + `${loopback ? ', remux-loopback+ts' : ''}`
+                + `${embedUrl && !loopback ? ', slim-no-headers' : ''})...`
             );
 
             // Master playlists must rewrite relative to the live master URL, not
@@ -696,16 +698,45 @@ app.get('/proxy/*b64Payload', async (req, res) => {
                 return;
             }
 
-            console.log(`  - Rewrote ${segmentCount} segment URL(s)`);
             const rewrittenPlaylist = rewrittenLines.join('\n');
+            const firstSeg = rewrittenLines.find((line) => {
+                const t = line.trim();
+                return t.length > 0 && !t.startsWith('#');
+            });
+            console.log(
+                `  - Rewrote ${segmentCount} segment URL(s)` +
+                    (firstSeg ? `; first len=${firstSeg.length}` : '')
+            );
 
             res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
             res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
             logManifestPreview('Sending manifest to client', rewrittenPlaylist);
             res.send(rewrittenPlaylist);
         } else {
-            const segmentBody = unwrapDisguisedSegment(response.body);
-            console.log('  - Piping segment to client...');
+            const rawBody = Buffer.isBuffer(response.body)
+                ? response.body
+                : Buffer.from(response.body || '');
+            const segmentBody = unwrapDisguisedSegment(rawBody);
+            if (!segmentBody || segmentBody.length === 0) {
+                console.error(
+                    `  - ERROR: unwrapped segment empty (upstream ${rawBody.length} bytes)`
+                );
+                res.status(502).send('Unwrapped segment empty');
+                return;
+            }
+            if (
+                segmentBody.length === rawBody.length &&
+                rawBody.subarray(0, 8).equals(PNG_SIGNATURE)
+            ) {
+                console.error(
+                    `  - ERROR: PNG segment had no MPEG-TS payload (${rawBody.length} bytes)`
+                );
+                res.status(502).send('PNG segment had no MPEG-TS payload');
+                return;
+            }
+            console.log(
+                `  - Piping segment to client (${segmentBody.length} bytes)...`
+            );
             res.setHeader('Content-Type', 'video/MP2T');
             res.send(segmentBody);
         }
