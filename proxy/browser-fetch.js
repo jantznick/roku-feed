@@ -233,6 +233,63 @@ async function fetchSegmentFromBrowserPage(page, url, lockKey = 'page') {
 }
 
 /**
+ * Actively re-fetch a live playlist through the embed tab (Daddy ?t= tokens).
+ * Returning a stale capture freezes MEDIA-SEQUENCE and every segment 404s.
+ * @param {import('puppeteer').Page} page
+ * @param {string} url
+ * @param {string} [lockKey]
+ */
+async function fetchManifestFromBrowserPage(page, url, lockKey = 'page') {
+    return withPageLock(lockKey, async () => {
+        logStep(`Refreshing live manifest via embed: ${url.slice(0, 100)}...`);
+        try {
+            const result = await page.evaluate(async (manifestUrl) => {
+                try {
+                    const response = await fetch(manifestUrl, {
+                        credentials: 'include',
+                        cache: 'no-store',
+                        redirect: 'follow',
+                    });
+                    if (!response.ok) {
+                        return { ok: false, status: response.status, error: `HTTP ${response.status}` };
+                    }
+                    return {
+                        ok: true,
+                        status: response.status,
+                        text: await response.text(),
+                        finalUrl: response.url || manifestUrl,
+                    };
+                } catch (error) {
+                    return { ok: false, status: 0, error: error?.message || String(error) };
+                }
+            }, url);
+            if (result?.ok && result.text?.includes('#EXTM3U')) {
+                return {
+                    statusCode: result.status,
+                    headers: { 'content-type': 'application/vnd.apple.mpegurl' },
+                    body: result.text,
+                    sourceUrl: result.finalUrl || url,
+                };
+            }
+            throw new Error(result?.error || 'in-page manifest refresh failed');
+        } catch (inPageError) {
+            logStep(`In-page manifest refresh failed (${inPageError.message}); trying CDP`);
+            const cdp = await fetchSegmentViaCdp(page, url);
+            const text = Buffer.isBuffer(cdp.body) ? cdp.body.toString('utf8') : String(cdp.body || '');
+            if (!text.includes('#EXTM3U')) {
+                throw new Error('CDP manifest refresh returned non-m3u8 body');
+            }
+            return {
+                statusCode: cdp.statusCode,
+                headers: { 'content-type': 'application/vnd.apple.mpegurl' },
+                body: text,
+                sourceUrl: url,
+            };
+        }
+    });
+}
+
+/**
  * Manifests: CDP capture via page navigation (in-page fetch blocked by CORS on strmd).
  * Segments: in-page fetch / CDP on an embed-origin page — never page.goto(.ts).
  */
@@ -527,6 +584,38 @@ export async function fetchViaBrowser(url, { embedUrl, referer, extraHeaders = {
     }
 
     if (isText && embedAlive) {
+        // Always re-fetch the live playlist through the embed tab. Serving the
+        // resolve-time capture freezes MEDIA-SEQUENCE (Daddy wedd48c) and every
+        // tokenized segment 404s — switching channels made this obvious.
+        const liveUrl = getLatestManifestSourceUrl(embedPage, url) || url;
+        try {
+            const refreshed = await fetchManifestFromBrowserPage(
+                embedPage,
+                liveUrl,
+                `embed-m3u8:${embedUrl}`
+            );
+            if (refreshed?.body?.includes('#EXTM3U')) {
+                const seq = (refreshed.body.match(/#EXT-X-MEDIA-SEQUENCE:(\d+)/) || [])[1] || '?';
+                logStep(
+                    `Serving refreshed embed manifest (${refreshed.body.length} chars, seq=${seq})`
+                );
+                return refreshed;
+            }
+        } catch (refreshError) {
+            logStep(`Embed manifest refresh failed (${refreshError.message})`);
+            // A dead ?t= token must not fall back to a frozen capture — that is
+            // exactly how MEDIA-SEQUENCE stuck and every segment 404'd.
+            if (/404|410|403|ERR_HTTP_RESPONSE_CODE/.test(refreshError.message)) {
+                logStep('Live playlist token dead; signaling embed re-resolve');
+                return {
+                    statusCode: 410,
+                    headers: { 'content-type': 'application/vnd.apple.mpegurl' },
+                    body: '',
+                };
+            }
+            logStep('Using last capture as soft fallback');
+        }
+
         let body = getLatestManifestBody(embedPage, url);
         if (!body) {
             body = await waitForLatestManifestBody(embedPage, url, 2500);
@@ -535,14 +624,12 @@ export async function fetchViaBrowser(url, { embedUrl, referer, extraHeaders = {
             const seq = (body.match(/#EXT-X-MEDIA-SEQUENCE:(\d+)/) || [])[1] || '?';
             const sourceUrl = getLatestManifestSourceUrl(embedPage, url) || url;
             logStep(
-                `Serving live manifest from embed player (${body.length} chars, ` +
-                    `seq=${seq})`
+                `Serving cached embed manifest (${body.length} chars, seq=${seq})`
             );
             return {
                 statusCode: 200,
                 headers: { 'content-type': 'application/vnd.apple.mpegurl' },
                 body,
-                // Live playlist URL (often has ?t= token) — use as rewrite base.
                 sourceUrl,
             };
         }

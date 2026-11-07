@@ -259,14 +259,24 @@ async function clickPlayButton(page, log) {
     return { clicked: false, jwFile: null };
 }
 
+function hasLivePlaylistToken(url) {
+    return /[?&]t=/.test(String(url || ''));
+}
+
 function pickBestCandidate(candidates) {
     if (candidates.length === 0) {
         return null;
     }
+    // Daddy (wedd48c) issues index.m3u8?t=… for the live sliding window. Prefer
+    // that over the bare index.m3u8 when scores tie — bare URLs 403 from Node and
+    // freeze the wrong rewrite base for tokenized segments.
     return [...candidates].sort((a, b) => {
         if (b.score !== a.score) return b.score - a.score;
         if (b.status === 200 && a.status !== 200) return 1;
         if (a.status === 200 && b.status !== 200) return -1;
+        const aTok = hasLivePlaylistToken(a.info?.streamUrl) ? 1 : 0;
+        const bTok = hasLivePlaylistToken(b.info?.streamUrl) ? 1 : 0;
+        if (bTok !== aTok) return bTok - aTok;
         return 0;
     })[0];
 }
@@ -527,6 +537,10 @@ export async function resolveStreamFromEmbed(browser, embedUrl, options = {}) {
             }
             if (manifestBody) {
                 info.manifestBody = manifestBody;
+                const liveSource = bodyCapture.getLatestSourceUrl?.(info.streamUrl);
+                if (liveSource && hasLivePlaylistToken(liveSource)) {
+                    info.streamUrl = liveSource;
+                }
                 const preview = manifestBody.split('\n').slice(0, 3).join(' | ');
                 log(`  -> Manifest ready (${manifestBody.length} chars): ${preview}`);
             } else {
