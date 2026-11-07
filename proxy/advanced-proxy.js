@@ -27,7 +27,7 @@ const port = process.env.PORT || 8787;
 const proxyHost = process.env.PROXY_HOST || '192.168.1.50:8787';
 const debug = process.env.PROXY_DEBUG === 'true';
 
-const PROXY_VERSION = 'embed-first-v33-idat-unwrap';
+const PROXY_VERSION = 'embed-first-v34-fresh-manifest';
 
 function isLoopbackClient(req) {
     const ip = String(req.ip || req.socket?.remoteAddress || '');
@@ -728,9 +728,9 @@ app.get('/proxy/*b64Payload', async (req, res) => {
                 + `${embedUrl && !loopback ? ', slim-no-headers' : ''})...`
             );
 
-            // Master playlists must rewrite relative to the live master URL, not
-            // the feed's mono.m3u8 path (that produced /high/high/ nesting).
-            let rewriteBase = ctx.manifestBaseUrl || streamUrl;
+            // Prefer the live capture URL (Daddy ?t= tokens) as rewrite base so
+            // relative segment paths resolve against the playlist that produced them.
+            let rewriteBase = response.sourceUrl || ctx.manifestBaseUrl || streamUrl;
             if (playlist.includes('#EXT-X-STREAM-INF') && embedUrl) {
                 const cached = getCachedStream(embedUrl);
                 if (cached?.streamUrl) {
@@ -738,6 +738,8 @@ app.get('/proxy/*b64Payload', async (req, res) => {
                     console.log(`  - Master rewrite base: ${rewriteBase.slice(0, 100)}...`);
                 }
             }
+            const seq = (playlist.match(/#EXT-X-MEDIA-SEQUENCE:(\d+)/) || [])[1] || '?';
+            console.log(`  - Playlist MEDIA-SEQUENCE=${seq}`);
 
             const KEY_TAG = '#EXT-X-KEY:';
             const rewrittenLines = [];

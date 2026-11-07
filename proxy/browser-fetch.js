@@ -1,6 +1,7 @@
 import {
     fetchManifestOnPage,
     getLatestManifestBody,
+    getLatestManifestSourceUrl,
     waitForLatestManifestBody,
 } from '../src/manifest-capture.js';
 import { launchBrowser as launchStealthBrowser, describePuppeteerMode } from '../src/puppeteer-config.js';
@@ -518,11 +519,18 @@ export async function fetchViaBrowser(url, { embedUrl, referer, extraHeaders = {
             body = await waitForLatestManifestBody(embedPage, url, 2500);
         }
         if (body) {
-            logStep(`Serving live manifest from embed player (${body.length} chars)`);
+            const seq = (body.match(/#EXT-X-MEDIA-SEQUENCE:(\d+)/) || [])[1] || '?';
+            const sourceUrl = getLatestManifestSourceUrl(embedPage, url) || url;
+            logStep(
+                `Serving live manifest from embed player (${body.length} chars, ` +
+                    `seq=${seq})`
+            );
             return {
                 statusCode: 200,
                 headers: { 'content-type': 'application/vnd.apple.mpegurl' },
                 body,
+                // Live playlist URL (often has ?t= token) — use as rewrite base.
+                sourceUrl,
             };
         }
         // Never page.goto() the embed tab — that kills the player session and

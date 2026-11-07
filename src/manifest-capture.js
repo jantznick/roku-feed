@@ -21,6 +21,19 @@ function isValidManifestText(text) {
     return text.includes('#EXTM3U') || text.includes('#EXT-X-');
 }
 
+function pathnameOf(url) {
+    try {
+        return new URL(url).pathname;
+    } catch {
+        return String(url || '').split('?')[0] || '';
+    }
+}
+
+function mediaSequenceOf(body) {
+    const match = String(body || '').match(/#EXT-X-MEDIA-SEQUENCE:(\d+)/);
+    return match ? match[1] : '?';
+}
+
 /** @type {WeakMap<import('puppeteer').Page, object>} */
 const capturesByPage = new WeakMap();
 
@@ -68,10 +81,16 @@ export async function attachManifestCapture(page, log = () => {}) {
         return existing;
     }
 
-    /** @type {Map<string, string>} */
-    const bodiesByUrl = new Map();
-    /** @type {Set<string>} */
-    const loggedUrls = new Set();
+    /**
+     * Pathname → { body, url, seq }. Keying by pathname avoids query-string churn.
+     * seq guards against async response.text() races: an older playlist read that
+     * finishes late must not overwrite a newer capture (Daddy MEDIA-SEQUENCE freeze).
+     * @type {Map<string, { body: string, url: string, seq: number }>}
+     */
+    const byPath = new Map();
+    /** @type {Map<string, number>} */
+    const latestSeqByPath = new Map();
+    let captureSeq = 0;
 
     const onResponse = (response) => {
         const url = response.url();
@@ -79,32 +98,33 @@ export async function attachManifestCapture(page, log = () => {}) {
             return;
         }
 
+        const path = pathnameOf(url);
+        if (!path) {
+            return;
+        }
+        const seq = ++captureSeq;
+        latestSeqByPath.set(path, Math.max(latestSeqByPath.get(path) || 0, seq));
+
         void (async () => {
             const text = await tryReadResponseBody(response);
-            if (text) {
-                bodiesByUrl.set(url, text);
-                // Keep one body per pathname so live playlist polls don't leave
-                // Roku stuck on the first MEDIA-SEQUENCE forever.
-                try {
-                    const path = new URL(url).pathname;
-                    for (const key of [...bodiesByUrl.keys()]) {
-                        if (key === url) continue;
-                        try {
-                            if (new URL(key).pathname === path) {
-                                bodiesByUrl.delete(key);
-                            }
-                        } catch {
-                            // Ignore malformed keys.
-                        }
-                    }
-                } catch {
-                    // Ignore malformed capture URL.
-                }
-                if (!loggedUrls.has(url)) {
-                    loggedUrls.add(url);
-                    log(`  -> Captured ${url.split('/').pop()} (${text.length} chars)`);
-                }
+            if (!text) {
+                return;
             }
+            // Stale read: a newer capture for this path was already assigned a higher seq.
+            if (seq < (latestSeqByPath.get(path) || 0)) {
+                return;
+            }
+            // Another in-flight read with a higher seq finished first.
+            const current = byPath.get(path);
+            if (current && current.seq > seq) {
+                return;
+            }
+
+            byPath.set(path, { body: text, url, seq });
+            log(
+                `  -> Captured ${url.split('/').pop()} (${text.length} chars, ` +
+                    `seq=${mediaSequenceOf(text)})`
+            );
         })();
     };
 
@@ -112,71 +132,53 @@ export async function attachManifestCapture(page, log = () => {}) {
 
     const capture = {
         getBody(url) {
-            return bodiesByUrl.get(url) || null;
+            return this.getLatestForUrl(url);
         },
 
         getAnyBody() {
-            const values = [...bodiesByUrl.values()];
-            return values.length > 0 ? values[values.length - 1] : null;
-        },
-
-        /**
-         * Latest body for a URL. Match exact URL, same pathname, or same
-         * quality-root suffix (/N/high/mono.m3u8). Never return a different
-         * playlist (e.g. master playlist.m3u8 for a mono.m3u8 request) — that
-         * caused nested /high/high/ rewrite loops on Roku.
-         */
-        getLatestForUrl(preferredUrl) {
-            const exact = bodiesByUrl.get(preferredUrl);
-            if (exact) {
-                return exact;
-            }
-
-            let preferredPath = '';
-            try {
-                preferredPath = new URL(preferredUrl).pathname;
-            } catch {
-                preferredPath = preferredUrl.split('?')[0] || '';
-            }
-            if (!preferredPath) {
-                return null;
-            }
-
-            // Prefer the *latest* pathname match — Map insertion order. Returning
-            // the first match left Daddy/Matchora Roku plays stuck on a stale
-            // MEDIA-SEQUENCE while the embed player kept capturing newer playlists.
-            let latestByPath = null;
-            for (const [url, body] of bodiesByUrl) {
-                try {
-                    if (new URL(url).pathname === preferredPath) {
-                        latestByPath = body;
-                    }
-                } catch {
-                    // Ignore malformed capture keys.
+            let best = null;
+            for (const entry of byPath.values()) {
+                if (!best || entry.seq > best.seq) {
+                    best = entry;
                 }
             }
-            if (latestByPath) {
-                return latestByPath;
+            return best?.body || null;
+        },
+
+        /** @returns {{ body: string, url: string, seq: number } | null} */
+        getLatestEntry(preferredUrl) {
+            const preferredPath = pathnameOf(preferredUrl);
+            if (preferredPath && byPath.has(preferredPath)) {
+                return byPath.get(preferredPath);
             }
 
             const preferredSuffix = qualityPathSuffix(preferredPath);
-            if (preferredSuffix) {
-                let latestBySuffix = null;
-                for (const [url, body] of bodiesByUrl) {
-                    try {
-                        if (qualityPathSuffix(new URL(url).pathname) === preferredSuffix) {
-                            latestBySuffix = body;
-                        }
-                    } catch {
-                        // Ignore malformed capture keys.
+            if (!preferredSuffix) {
+                return null;
+            }
+            let best = null;
+            for (const [path, entry] of byPath) {
+                if (qualityPathSuffix(path) === preferredSuffix) {
+                    if (!best || entry.seq > best.seq) {
+                        best = entry;
                     }
                 }
-                if (latestBySuffix) {
-                    return latestBySuffix;
-                }
             }
+            return best;
+        },
 
-            return null;
+        /**
+         * Latest body for a URL. Match same pathname or same quality-root suffix.
+         * Never return a different playlist quality (master vs mono) — that caused
+         * nested /high/high/ rewrite loops on Roku.
+         */
+        getLatestForUrl(preferredUrl) {
+            return this.getLatestEntry(preferredUrl)?.body || null;
+        },
+
+        /** Source URL of the latest capture (includes live query token when present). */
+        getLatestSourceUrl(preferredUrl) {
+            return this.getLatestEntry(preferredUrl)?.url || null;
         },
 
         /** @param {string} url @param {number} [timeoutMs] */
@@ -310,6 +312,19 @@ export function getLatestManifestBody(page, preferredUrl = '') {
         return null;
     }
     return preferredUrl ? capture.getLatestForUrl(preferredUrl) : capture.getAnyBody();
+}
+
+/**
+ * Source URL (with live query token) for the latest captured playlist.
+ * @param {import('puppeteer').Page} page
+ * @param {string} [preferredUrl]
+ */
+export function getLatestManifestSourceUrl(page, preferredUrl = '') {
+    const capture = capturesByPage.get(page);
+    if (!capture || !preferredUrl) {
+        return null;
+    }
+    return capture.getLatestSourceUrl?.(preferredUrl) || null;
 }
 
 /**
