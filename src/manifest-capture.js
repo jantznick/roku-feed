@@ -83,6 +83,23 @@ export async function attachManifestCapture(page, log = () => {}) {
             const text = await tryReadResponseBody(response);
             if (text) {
                 bodiesByUrl.set(url, text);
+                // Keep one body per pathname so live playlist polls don't leave
+                // Roku stuck on the first MEDIA-SEQUENCE forever.
+                try {
+                    const path = new URL(url).pathname;
+                    for (const key of [...bodiesByUrl.keys()]) {
+                        if (key === url) continue;
+                        try {
+                            if (new URL(key).pathname === path) {
+                                bodiesByUrl.delete(key);
+                            }
+                        } catch {
+                            // Ignore malformed keys.
+                        }
+                    }
+                } catch {
+                    // Ignore malformed capture URL.
+                }
                 if (!loggedUrls.has(url)) {
                     loggedUrls.add(url);
                     log(`  -> Captured ${url.split('/').pop()} (${text.length} chars)`);
@@ -125,26 +142,37 @@ export async function attachManifestCapture(page, log = () => {}) {
                 return null;
             }
 
+            // Prefer the *latest* pathname match — Map insertion order. Returning
+            // the first match left Daddy/Matchora Roku plays stuck on a stale
+            // MEDIA-SEQUENCE while the embed player kept capturing newer playlists.
+            let latestByPath = null;
             for (const [url, body] of bodiesByUrl) {
                 try {
                     if (new URL(url).pathname === preferredPath) {
-                        return body;
+                        latestByPath = body;
                     }
                 } catch {
                     // Ignore malformed capture keys.
                 }
             }
+            if (latestByPath) {
+                return latestByPath;
+            }
 
             const preferredSuffix = qualityPathSuffix(preferredPath);
             if (preferredSuffix) {
+                let latestBySuffix = null;
                 for (const [url, body] of bodiesByUrl) {
                     try {
                         if (qualityPathSuffix(new URL(url).pathname) === preferredSuffix) {
-                            return body;
+                            latestBySuffix = body;
                         }
                     } catch {
                         // Ignore malformed capture keys.
                     }
+                }
+                if (latestBySuffix) {
+                    return latestBySuffix;
                 }
             }
 
