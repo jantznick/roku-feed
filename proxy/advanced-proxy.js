@@ -26,7 +26,7 @@ const port = process.env.PORT || 8787;
 const proxyHost = process.env.PROXY_HOST || '192.168.1.50:8787';
 const debug = process.env.PROXY_DEBUG === 'true';
 
-const PROXY_VERSION = 'embed-first-v31-await-embed-on-410';
+const PROXY_VERSION = 'embed-first-v32-embed-first-always';
 
 function isLoopbackClient(req) {
     const ip = String(req.ip || req.socket?.remoteAddress || '');
@@ -419,41 +419,21 @@ async function resolvePlaybackContext(
         };
     }
 
-    // TimStreams (d=1): try the feed/signed URL first on a cold start so Roku is
-    // not blocked ~20s. If that URL is dead (410/403) the caller sets forceEmbed
-    // and we *await* a fresh resolve — background-warm-only left us retrying the
-    // expired feed token forever.
+    // TimStreams (d=1): always resolve from the embed at play time. Feed tokens
+    // expire (410) and must not be the source of truth — the embed `e` field is.
     if (feedDirectOk) {
         let stream = getCachedStream(embedUrl);
-        if (!stream && !forceEmbed && isManifest) {
-            console.log(
-                '  - TimStreams: trying feed URL first; warming embed in background'
-            );
-            void getResolvedStream(embedUrl).catch((err) => {
-                console.error(
-                    `  - Background embed warm failed (${err.message}); will await on retry`
-                );
-            });
-            return {
-                upstreamUrl: streamUrl,
-                referer: feedReferer,
-                extraHeaders: feedHeaders,
-                directOk: true,
-                manifestBaseUrl: streamUrl,
-                resolvedFromEmbed: false,
-            };
-        }
         if (!stream || forceEmbed) {
             console.log(
                 forceEmbed
-                    ? '  - TimStreams: feed URL expired; awaiting fresh embed resolve'
-                    : '  - TimStreams: opening embed for signed m3u8 + segment cookies'
+                    ? '  - TimStreams: re-resolving embed after failed manifest'
+                    : '  - TimStreams: awaiting embed for fresh signed m3u8'
             );
             try {
                 stream = await getResolvedStream(embedUrl, { force: forceEmbed });
             } catch (err) {
                 console.error(
-                    `  - Embed resolve failed (${err.message}); using feed URL via HTTP`
+                    `  - Embed resolve failed (${err.message}); falling back to feed URL`
                 );
                 return {
                     upstreamUrl: streamUrl,
