@@ -26,7 +26,7 @@ const port = process.env.PORT || 8787;
 const proxyHost = process.env.PROXY_HOST || '192.168.1.50:8787';
 const debug = process.env.PROXY_DEBUG === 'true';
 
-const PROXY_VERSION = 'embed-first-v27-remux-ts-suffix';
+const PROXY_VERSION = 'embed-first-v28-d1-fetch-fallback';
 
 function isLoopbackClient(req) {
     const ip = String(req.ip || req.socket?.remoteAddress || '');
@@ -256,6 +256,11 @@ function isManifestUrl(url) {
     return url.endsWith('.m3u8') || url.includes('.m3u8?');
 }
 
+/** Matchora / Streamed GOAT segments live on TikTok image CDN; Node fetch often throws. */
+function isDisguisedCdnSegment(url) {
+    return /tiktokcdn\.|ttam-origin\.image|\.image\?/i.test(String(url || ''));
+}
+
 function buildRewrittenPayload(url, referer, extraHeaders, embedUrl, directOk) {
     return encodeProxyPayload(url, referer, extraHeaders, embedUrl, directOk);
 }
@@ -263,23 +268,54 @@ function buildRewrittenPayload(url, referer, extraHeaders, embedUrl, directOk) {
 async function fetchUpstream(streamUrl, { embedUrl, referer, extraHeaders, directOk }, isManifestRequest) {
     const browserOptions = { embedUrl, referer, extraHeaders };
 
-    if (directOk) {
-        // Manifests usually work with minimal HTTP. TikTok segment URLs often 403
-        // the proxy host — fall back to the open TimStreams embed tab (cookies/UA) then unwrap.
-        console.log('  - Fetch mode: direct HTTP (d=1, minimal headers)');
-        const httpResponse = await fetchViaHttp(
+    // GOAT TikTok .image segments: skip doomed Node fetch when we have an embed tab.
+    if (
+        directOk &&
+        !isManifestRequest &&
+        embedUrl &&
+        isDisguisedCdnSegment(streamUrl)
+    ) {
+        console.log('  - Fetch mode: Chromium (disguised CDN segment; skip d=1 HTTP)');
+        const browserResponse = await fetchViaBrowser(
             streamUrl,
-            referer,
-            extraHeaders,
-            isManifestRequest,
-            { minimal: true }
+            browserOptions,
+            isManifestRequest
         );
-        if (httpResponse.statusCode >= 200 && httpResponse.statusCode < 300) {
+        return { response: browserResponse, mode: 'chromium' };
+    }
+
+    if (directOk) {
+        // Manifests usually work with minimal HTTP. TikTok / GOAT segment URLs often
+        // 403 — or throw "fetch failed" (DNS/TLS/reset) — from the proxy host.
+        // Fall back to the open embed tab (cookies/UA) then unwrap. Previously only
+        // HTTP status failures fell back, so network throws aborted the Roku play.
+        console.log('  - Fetch mode: direct HTTP (d=1, minimal headers)');
+        let httpResponse = null;
+        let httpError = null;
+        try {
+            httpResponse = await fetchViaHttp(
+                streamUrl,
+                referer,
+                extraHeaders,
+                isManifestRequest,
+                { minimal: true }
+            );
+        } catch (err) {
+            httpError = err;
+            console.log(`  - Direct HTTP threw: ${err.message}`);
+        }
+
+        if (httpResponse && httpResponse.statusCode >= 200 && httpResponse.statusCode < 300) {
             return { response: httpResponse, mode: 'http' };
         }
-        if (!isManifestRequest && embedUrl) {
+
+        if (embedUrl) {
+            const reason = httpError
+                ? `threw (${httpError.message})`
+                : `status ${httpResponse.statusCode}`;
             console.log(
-                `  - Direct HTTP ${httpResponse.statusCode}; falling back to Chromium for segment`
+                `  - Direct HTTP ${reason}; falling back to Chromium` +
+                    `${isManifestRequest ? ' for manifest' : ' for segment'}`
             );
             const browserResponse = await fetchViaBrowser(
                 streamUrl,
@@ -287,6 +323,10 @@ async function fetchUpstream(streamUrl, { embedUrl, referer, extraHeaders, direc
                 isManifestRequest
             );
             return { response: browserResponse, mode: 'chromium' };
+        }
+
+        if (httpError) {
+            throw httpError;
         }
         return { response: httpResponse, mode: 'http' };
     }
