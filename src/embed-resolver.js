@@ -77,21 +77,36 @@ async function stripClickBlockers(page) {
     }
 }
 
-/** Pull HLS file from JW Player playlist APIs across frames (plytvme/dervlin, embed.st). */
+/** Pull HLS file from JW Player playlist APIs across frames (plytvme/dervlin, embed.st, TimStreams). */
 async function extractJwPlaylistFile(page) {
     for (const frame of page.frames()) {
         try {
             const file = await frame.evaluate(() => {
                 try {
                     if (typeof window.jwplayer !== 'function') return null;
-                    const player = window.jwplayer();
-                    try {
-                        player.play?.(true);
-                    } catch {
-                        // ignore
+                    // TimStreams ehgembxe uses jwplayer('player'); others use the default id.
+                    const candidates = [];
+                    for (const id of ['player', undefined]) {
+                        try {
+                            const player = id ? window.jwplayer(id) : window.jwplayer();
+                            if (player) candidates.push(player);
+                        } catch {
+                            // ignore missing id
+                        }
                     }
-                    const item = player.getPlaylistItem?.() || player.getPlaylist?.()?.[0];
-                    return item?.file || item?.sources?.[0]?.file || null;
+                    for (const player of candidates) {
+                        try {
+                            player.play?.(true);
+                        } catch {
+                            // ignore
+                        }
+                        const item = player.getPlaylistItem?.() || player.getPlaylist?.()?.[0];
+                        const file = item?.file || item?.sources?.[0]?.file || null;
+                        if (file && typeof file === 'string' && /^https?:\/\//i.test(file)) {
+                            return file;
+                        }
+                    }
+                    return null;
                 } catch {
                     return null;
                 }

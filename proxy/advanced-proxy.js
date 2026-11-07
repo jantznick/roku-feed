@@ -26,7 +26,7 @@ const port = process.env.PORT || 8787;
 const proxyHost = process.env.PROXY_HOST || '192.168.1.50:8787';
 const debug = process.env.PROXY_DEBUG === 'true';
 
-const PROXY_VERSION = 'embed-first-v30-slim-segment-urls';
+const PROXY_VERSION = 'embed-first-v31-await-embed-on-410';
 
 function isLoopbackClient(req) {
     const ip = String(req.ip || req.socket?.remoteAddress || '');
@@ -358,6 +358,21 @@ async function fetchUpstream(streamUrl, { embedUrl, referer, extraHeaders, direc
             return { response: httpResponse, mode: 'http' };
         }
 
+        // Expired signed manifests (410/404): Chromium page.goto of the same URL
+        // is useless and thrashs the shared browser while other plays resolve.
+        // Return the HTTP failure so the caller can forceEmbed-resolve instead.
+        if (
+            isManifestRequest &&
+            httpResponse &&
+            (httpResponse.statusCode === 410 || httpResponse.statusCode === 404)
+        ) {
+            console.log(
+                `  - Direct HTTP ${httpResponse.statusCode} (expired signed URL); ` +
+                    'skipping Chromium of the same URL'
+            );
+            return { response: httpResponse, mode: 'http' };
+        }
+
         if (embedUrl) {
             const reason = httpError
                 ? `threw (${httpError.message})`
@@ -391,7 +406,7 @@ async function resolvePlaybackContext(
     feedReferer,
     feedHeaders,
     feedDirectOk,
-    { isManifest = false } = {}
+    { isManifest = false, forceEmbed = false } = {}
 ) {
     if (!embedUrl) {
         return {
@@ -404,18 +419,19 @@ async function resolvePlaybackContext(
         };
     }
 
-    // TimStreams (d=1): prefer the feed/signed URL immediately so Roku is not
-    // blocked ~20s on a headless embed that often finds 0 m3u8 candidates.
-    // Warm/refresh the embed in the background when missing; use cache when ready.
+    // TimStreams (d=1): try the feed/signed URL first on a cold start so Roku is
+    // not blocked ~20s. If that URL is dead (410/403) the caller sets forceEmbed
+    // and we *await* a fresh resolve — background-warm-only left us retrying the
+    // expired feed token forever.
     if (feedDirectOk) {
         let stream = getCachedStream(embedUrl);
-        if (!stream) {
+        if (!stream && !forceEmbed && isManifest) {
             console.log(
-                '  - TimStreams: using feed URL first; warming embed in background'
+                '  - TimStreams: trying feed URL first; warming embed in background'
             );
             void getResolvedStream(embedUrl).catch((err) => {
                 console.error(
-                    `  - Background embed warm failed (${err.message}); staying on feed URL`
+                    `  - Background embed warm failed (${err.message}); will await on retry`
                 );
             });
             return {
@@ -426,6 +442,28 @@ async function resolvePlaybackContext(
                 manifestBaseUrl: streamUrl,
                 resolvedFromEmbed: false,
             };
+        }
+        if (!stream || forceEmbed) {
+            console.log(
+                forceEmbed
+                    ? '  - TimStreams: feed URL expired; awaiting fresh embed resolve'
+                    : '  - TimStreams: opening embed for signed m3u8 + segment cookies'
+            );
+            try {
+                stream = await getResolvedStream(embedUrl, { force: forceEmbed });
+            } catch (err) {
+                console.error(
+                    `  - Embed resolve failed (${err.message}); using feed URL via HTTP`
+                );
+                return {
+                    upstreamUrl: streamUrl,
+                    referer: feedReferer,
+                    extraHeaders: feedHeaders,
+                    directOk: true,
+                    manifestBaseUrl: streamUrl,
+                    resolvedFromEmbed: false,
+                };
+            }
         }
         const freshUrl = stream.streamUrl || streamUrl;
         const useFresh = isManifest && Boolean(stream.streamUrl);
@@ -565,7 +603,10 @@ app.get('/proxy/*b64Payload', async (req, res) => {
         ));
 
         if (response.statusCode >= 300 && isManifestRequest && embedUrl) {
-            console.log(`  - Manifest fetch failed (${response.statusCode}), re-resolving from embed...`);
+            console.log(
+                `  - Manifest fetch failed (${response.statusCode}), ` +
+                    'awaiting fresh embed resolve...'
+            );
             clearResolvedStream(embedUrl);
             ctx = await resolvePlaybackContext(
                 embedUrl,
@@ -573,8 +614,11 @@ app.get('/proxy/*b64Payload', async (req, res) => {
                 referer,
                 extraHeaders,
                 directOk,
-                { isManifest: true }
+                { isManifest: true, forceEmbed: true }
             );
+            if (ctx.resolvedFromEmbed) {
+                console.log(`  - Fresh embed m3u8: ${ctx.upstreamUrl.slice(0, 100)}...`);
+            }
             ({ response, mode } = await fetchUpstream(
                 ctx.upstreamUrl,
                 {
