@@ -15,6 +15,7 @@ import { uploadImages, uploadFeed, deleteImages } from './uploader.js';
 import { logLeagues } from './league-logger.js';
 import { getEmbedConcurrency } from './async-pool.js';
 import { getStreamReuseTtlMs } from './stream-reuse.js';
+import { applyPendingMergedStreams, mergeNhlAndHockeySources } from './hockey-merge.js';
 
 // Stealth can throw TargetCloseError off the await chain during concurrent newPage().
 installPuppeteerProcessGuards();
@@ -187,14 +188,15 @@ async function main() {
       console.error(`DaddyLive scrape failed (continuing): ${error.message}`);
     }
 
-    // Combine the games from all sources
-    const allCurrentGames = [
+    // Combine sources, then fold duplicate NHL matchups (onhockey NHL + ppv HOCKEY)
+    // into one feed item using the same team-alias pairing as plexflix/scores.
+    const allCurrentGames = mergeNhlAndHockeySources([
       ...onHockeyGames,
       ...streamedGames,
       ...channels247,
       ...timstChannels,
       ...daddyChannels,
-    ];
+    ]);
     console.log(`\nFound ${onHockeyGames.length} games from onhockey.tv${skipOnHockey ? ' (skipped)' : ''} and ${streamedGames.length} games from ppv.st.`);
     console.log(`Found ${channels247.length} ppv.st 24/7, ${timstChannels.length} TimStreams, ${daddyChannels.length} DaddyLive fill-ins.`);
     console.log(`Total unique items to process: ${allCurrentGames.length}`);
@@ -248,14 +250,22 @@ async function main() {
         ? []
         : await deepScrapeGames(browser, onHockeyToProcess);
 
+    // If onhockey resolve failed but a merge still has ppv streams, keep the game.
+    const deepScrapedIds = new Set(onHockeyWithStreams.map((g) => g.id));
+    const mergedPpvFallback = onHockeyToProcess.filter(
+        (g) => !deepScrapedIds.has(g.id) && g.pendingMergedStreams?.length
+    );
+
     // Streamed / 24/7 / TimStreams / Daddy already have streams; combine with onhockey deep-scrape results.
-    const allGamesToAddOrUpdate = [
+    // Apply any ppv streams stashed when NHL+hockey matchups were merged before deep scrape.
+    const allGamesToAddOrUpdate = applyPendingMergedStreams([
         ...onHockeyWithStreams,
+        ...mergedPpvFallback,
         ...streamedToProcess,
         ...channelsToProcess,
         ...timstToProcess,
         ...daddyToProcess,
-    ];
+    ]);
 
     // --- IMAGE HANDLING ---
     // Only new games (or title changes) get new posters; updates reuse existing B2 thumbnails.
