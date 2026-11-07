@@ -76,31 +76,18 @@ SKIP_PROXY=true
 
 **Note:** Skipping the proxy does not add referer headers on the client. Many ppv.st streams may still fail without the proxy; onhockey / some direct URLs may work anyway.
 
-## The two proxy implementations
+## Proxy implementation
 
-Both live under `proxy/`. Run **one** of them on port **8787** (or change `PROXY_SERVER` and the `proxyHost` constant inside the file you use so manifest rewrites match).
+Run **`proxy/advanced-proxy.js`** on port **8787** (Docker compose does this). Payload shape: `GET /proxy/<base64url JSON { u, r, h?, e?, d? }>`.
 
-The scraper does **not** choose between them — only the URL shape matters: `GET /proxy/<base64-encoded-upstream-url>`.
+- **Stack:** ESM, Express, Puppeteer (`proxy/browser-fetch.js`)
+- **d=1 (TimStreams):** HTTP first; Chromium fallback; WebP-TS unwrap for Roku
+- **Otherwise (Streamed / Daddy):** open embed `e`, serve **live** playlist captures (pathname + seq), rewrite segments slim (no cookie headers in URL)
+- **Segments:** embed-tab fetch / CDP first when the player is open; Node HTTP fallback; PNG/WebP → MPEG-TS unwrap
+- **`/remux/`:** optional ffmpeg AAC-LC path; the feed writes `/proxy/` only
+- **Env:** `PROXY_HOST`, `PROXY_DEBUG`, `PROXY_BROWSER_IDLE_MS` (default 10 min)
 
-### `proxy/index.js` (warren-bank HLS proxy)
-
-- **Stack:** CommonJS, Express, `@warren-bank/hls-proxy`
-- **Mount:** `app.use('/proxy', middleware.request)`
-- **Behavior:** Library fetches upstream with fixed headers and rewrites playlists
-- **Referer:** `https://embedsports.top/`
-- **Rewrite host:** `proxyHost` in file (default `192.168.1.50:8787`)
-
-### `proxy/advanced-proxy.js` (custom, recommended)
-
-- **Stack:** ESM, Express, **Puppeteer** (`proxy/browser-fetch.js`)
-- **Route:** `GET /proxy/:b64Payload` where payload is JSON `{ u, r, h?, e? }`
-- **Behavior:** Opens the embed page (`e`) in Chromium and keeps it warm. Manifests are captured from the live player (or via navigation). Segments try direct HTTP first, then **in-page `fetch()` on the embed tab** (correct Origin/cookies), then CDP `Network.loadNetworkResource` — never `page.goto(.ts)` (that aborts with `net::ERR_ABORTED` on strmd). Rewrites `#EXT-X-KEY` and segment lines to proxied URLs.
-- **Referer / headers:** Per-stream from feed payload (`r`, `h`)
-- **Embed page:** `e` in payload (re-scrape feed after this field was added)
-- **CORS:** Sets `Access-Control-Allow-Origin: *`
-- **Env:** `PROXY_HOST` (segment rewrite host), `PROXY_DEBUG`, `PROXY_BROWSER_IDLE_MS` (default 10 min)
-
-Historically the feed could pass referer in the query string; that was removed. Both proxies use a **fixed** embedsports referer. The scraper still records per-stream `Referer` only to decide **whether** to proxy, not to configure the proxy per stream.
+`proxy/index.js` is retired (exits with a pointer to advanced-proxy).
 
 ## End-to-end flow (proxied stream)
 
