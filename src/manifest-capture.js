@@ -210,8 +210,16 @@ export async function attachManifestCapture(page, log = () => {}) {
 export function attachAdWindowHandler(page, log = () => {}) {
     page.on('popup', async (popup) => {
         try {
-            const url = popup.url() || '(loading)';
-            log(`-- Ad window opened (${url}), closing`);
+            // Wait briefly so the popup URL settles (often blank at the event).
+            await new Promise((r) => setTimeout(r, 500));
+            const url = popup.url() || '';
+            // Never close player/embed popups — that killed Daddy sessions mid-play
+            // when another resolve's ad handler raced the shared browser.
+            if (/thedaddy\.li\/stream|ehgembxe\.cfd|\/embed\/|\.m3u8|dembed\.st|matchora/i.test(url)) {
+                log(`-- Leaving player popup open (${url.slice(0, 100)})`);
+                return;
+            }
+            log(`-- Ad window opened (${url || '(loading)'}), closing`);
             await popup.close();
         } catch {
             // Popup may already be gone.
