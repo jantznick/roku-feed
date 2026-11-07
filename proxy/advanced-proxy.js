@@ -265,7 +265,7 @@ async function fetchUpstream(streamUrl, { embedUrl, referer, extraHeaders, direc
 
     if (directOk) {
         // Manifests usually work with minimal HTTP. TikTok segment URLs often 403
-        // the proxy host — fall back to the open grandemx tab (cookies/UA) then unwrap.
+        // the proxy host — fall back to the open TimStreams embed tab (cookies/UA) then unwrap.
         console.log('  - Fetch mode: direct HTTP (d=1, minimal headers)');
         const httpResponse = await fetchViaHttp(
             streamUrl,
@@ -315,7 +315,7 @@ async function resolvePlaybackContext(
         };
     }
 
-    // TimStreams (d=1): open grandemx once (cached) for a fresh signed m3u8 + cookies.
+    // TimStreams (d=1): open embed once (cached) for a fresh signed m3u8 + cookies.
     // Segments stay on /proxy so WebP-TS can be unwrapped for Roku; fetch tries HTTP
     // then Chromium when TikTok 403s the proxy host.
     if (feedDirectOk) {

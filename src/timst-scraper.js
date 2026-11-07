@@ -1,14 +1,15 @@
 /**
- * TimStreams (timst.top) live-TV channels.
+ * TimStreams (tim-streams.com) live-TV channels.
  *
- * Channel catalog: GET https://timst.top/api/channels
- * Stream wrappers: https://grandemx.org/<id> → JW Player with a signed .m3u8
+ * Channel catalog: GET https://tim-streams.com/api/channels
+ * Stream wrappers: https://ehgembxe.cfd/<id> → JWT /play/... → JW Player with a signed .m3u8
+ * (Previously timst.top + grandemx.org; same catalog JSON shape.)
  *
  * Feed sections: Sports → "24/7 Channels", Entertainment → "Entertainment",
  * Cartoons → "Cartoons". Catalog logos are used as Roku posters.
  *
  * The CDN often 404s from datacenter IPs; we still capture the signed URL +
- * Referer so the LAN proxy / home IP can fetch it (same pattern as Streamed).
+ * Referer so the LAN proxy / home IP can fetch it (same pattern as ppv.st).
  */
 
 import { attachAdWindowHandler } from './manifest-capture.js';
@@ -25,9 +26,9 @@ import {
     reuseStreamsFromFeedItem,
 } from './stream-reuse.js';
 
-const CHANNELS_API = 'https://timst.top/api/channels';
-const SITE_ORIGIN = 'https://timst.top/';
-const PLAYER_REFERER = 'https://grandemx.org/';
+const CHANNELS_API = 'https://tim-streams.com/api/channels';
+const SITE_ORIGIN = 'https://tim-streams.com/';
+const PLAYER_REFERER = 'https://ehgembxe.cfd/';
 
 /** TimStreams genre ids from /api/channels → genres[]. */
 const GENRE_ENTERTAINMENT = 1;
@@ -102,7 +103,7 @@ function isUsEntertainmentChannel(name, flag) {
 
 /**
  * @param {import('puppeteer').Browser} browser
- * @param {string} shortUrl - grandemx.org short link from the API
+ * @param {string} shortUrl - ehgembxe.cfd short link from the API
  * @param {string} label
  * @returns {Promise<{ streamUrl: string, referer: string, embedUrl: string, sourceName: string, confirmedAt: string, directFetchOk: boolean }|null>}
  */
@@ -298,7 +299,7 @@ export async function scrapeTimstChannels(browser, previousById = new Map()) {
         return [];
     }
 
-    console.log('\n--- Scraping TimStreams live-TV (timst.top) ---');
+    console.log('\n--- Scraping TimStreams live-TV (tim-streams.com) ---');
 
     let catalog;
     try {

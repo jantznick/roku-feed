@@ -33,7 +33,7 @@ Clients only talk to your proxy; the proxy talks to the stream host.
 | Source | Typical `streamLinks` | Usually proxied? |
 |--------|----------------------|------------------|
 | **ppv.st** (live + 24/7) | Puppeteer adds `headers: { Referer }` from the embed | Yes, unless `SKIP_PROXY=true` |
-| **TimStreams** (timst.top / grandemx) | Signed junksonus `.m3u8` + Referer + often `d=1` | Yes — Roku needs WebP-TS unwrap via proxy |
+| **TimStreams** (tim-streams.com / ehgembxe.cfd) | Signed `.m3u8` + Referer + often `d=1` | Yes — Roku needs WebP-TS unwrap via proxy |
 | **onhockey.tv** | `{ provider, url }` only — no `headers` | No — always direct |
 
 If Puppeteer does not capture a referer, the stream stays direct even from ppv.st.

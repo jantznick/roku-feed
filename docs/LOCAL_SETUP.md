@@ -120,7 +120,7 @@ On startup the scraper **downloads the previous feed from B2** (when configured)
   - **streamd** strips click-stealing `#dontfoid` overlays and can read JW playlist files.
 - **ppv.st:** hockey, baseball, basketball, american-football, motor-sports, football
 - **24/7 channels:** USA networks (NHL Network, MLB TV, NBA TV, ESPN/NFL, etc.)
-- **TimStreams (timst.top):** live-TV split by genre — US sports → `24/7 Channels`, US entertainment → `Entertainment`, all cartoons → `Cartoons`. Uses each channel’s catalog `logo` as the Roku poster (no local banner art required). Signed HLS via grandemx; may need the LAN proxy / home IP when datacenter CDNs 404.
+- **TimStreams (tim-streams.com):** live-TV split by genre — US sports → `24/7 Channels`, US entertainment → `Entertainment`, all cartoons → `Cartoons`. Uses each channel’s catalog `logo` as the Roku poster (no local banner art required). Signed HLS via ehgembxe.cfd wrappers; may need the LAN proxy / home IP when datacenter CDNs 404.
 
 ### ppv.st (live only)
 
