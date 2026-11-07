@@ -32,11 +32,12 @@ Clients only talk to your proxy; the proxy talks to the stream host.
 
 | Source | Typical `streamLinks` | Usually proxied? |
 |--------|----------------------|------------------|
-| **ppv.st** (live + 24/7) | Puppeteer adds `headers: { Referer }` from the embed | Yes, unless `SKIP_PROXY=true` |
-| **TimStreams** (tim-streams.com / ehgembxe.cfd) | Signed `.m3u8` + Referer + often `d=1` | Yes — Roku needs WebP-TS unwrap via proxy |
-| **onhockey.tv** | `{ provider, url }` only — no `headers` | No — always direct |
+| **ppv.st** (live + 24/7) | Referer + `embedUrl`; `d=1` when Node replay OK | Yes, unless `SKIP_PROXY=true` |
+| **TimStreams** | Signed `.m3u8` + Referer + `e`; often `d=1` | Yes — Roku needs WebP-TS unwrap |
+| **DaddyLive** | Referer + `e`; never `d=1` | Yes — live playlist + embed segments |
+| **onhockey.tv** | mtchor/streamd/plytvme/sportpl get Referer; fluidtv/brcove often raw CDN | Partial — only when Referer is set |
 
-If Puppeteer does not capture a referer, the stream stays direct even from ppv.st.
+If Puppeteer does not capture a referer, the stream stays direct. Unchanged feed items keep a signed `u` but advanced-proxy refreshes via payload `e`.
 
 `streamSignature` in the feed always uses the **original** URL (before any proxy rewrite), so diffing games is unaffected.
 
@@ -173,10 +174,10 @@ For a quick proxy URL preview from a single embed, see `src/test-stream.js`.
 | File | Role |
 |------|------|
 | `src/feed-generator.js` | Proxy rewrite + `SKIP_PROXY` / `PROXY_SERVER` |
-| `src/streamed-scraper.js` | Sets `headers.Referer` on ppv.st streams |
-| `src/scraper.js` | onhockey streams (usually no referer → direct) |
-| `proxy/index.js` | HLS proxy (library) |
-| `proxy/advanced-proxy.js` | HLS proxy (custom, embed-first) |
+| `src/streamed-scraper.js` | Sets `headers.Referer` / `embedUrl` on ppv.st streams |
+| `src/scraper.js` | onhockey (proxied only when Referer captured) |
+| `proxy/advanced-proxy.js` | Production HLS proxy (embed-first) |
+| `proxy/index.js` | Retired stub — do not run |
 | `proxy/Dockerfile` | Docker image for advanced proxy |
 | `proxy/docker-compose.yml` | Compose service (`roku-hls-proxy`) |
 | `docs/LOCAL_SETUP.md` | General local setup |
