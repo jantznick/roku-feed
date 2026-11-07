@@ -4,7 +4,7 @@ This document explains why some streams in `feed.json` go through a local proxy,
 
 ## The problem
 
-Many Streamed.pk embed players load HLS (`.m3u8`) with a **`Referer`** header (often tied to `embedsports.top`). Roku and mobile players request the manifest URL directly; they do not send the same headers a browser would.
+Many ppv.st embed players load HLS (`.m3u8`) with a **`Referer`** header (often tied to the embed host, e.g. `taifood-blog.asia`). Roku and mobile players request the manifest URL directly; they do not send the same headers a browser would.
 
 If the CDN rejects requests without that referer, playback fails when the feed points at the raw `.m3u8` URL.
 
@@ -32,11 +32,11 @@ Clients only talk to your proxy; the proxy talks to the stream host.
 
 | Source | Typical `streamLinks` | Usually proxied? |
 |--------|----------------------|------------------|
-| **Streamed.pk** (live + 24/7) | Puppeteer adds `headers: { Referer }` from the embed | Yes, unless `SKIP_PROXY=true` |
+| **ppv.st** (live + 24/7) | Puppeteer adds `headers: { Referer }` from the embed | Yes, unless `SKIP_PROXY=true` |
 | **TimStreams** (timst.top / grandemx) | Signed junksonus `.m3u8` + Referer + often `d=1` | Yes — Roku needs WebP-TS unwrap via proxy |
 | **onhockey.tv** | `{ provider, url }` only — no `headers` | No — always direct |
 
-If Puppeteer does not capture a referer, the stream stays direct even from Streamed.pk.
+If Puppeteer does not capture a referer, the stream stays direct even from ppv.st.
 
 `streamSignature` in the feed always uses the **original** URL (before any proxy rewrite), so diffing games is unaffected.
 
@@ -74,7 +74,7 @@ SKIP_PROXY=true
 # PROXY_SERVER=http://192.168.1.50:8787
 ```
 
-**Note:** Skipping the proxy does not add referer headers on the client. Many Streamed.pk streams may still fail without the proxy; onhockey / some direct URLs may work anyway.
+**Note:** Skipping the proxy does not add referer headers on the client. Many ppv.st streams may still fail without the proxy; onhockey / some direct URLs may work anyway.
 
 ## The two proxy implementations
 
@@ -186,7 +186,7 @@ For a quick proxy URL preview from a single embed, see `src/test-stream.js`.
 | File | Role |
 |------|------|
 | `src/feed-generator.js` | Proxy rewrite + `SKIP_PROXY` / `PROXY_SERVER` |
-| `src/streamed-scraper.js` | Sets `headers.Referer` on Streamed.pk streams |
+| `src/streamed-scraper.js` | Sets `headers.Referer` on ppv.st streams |
 | `src/scraper.js` | onhockey streams (usually no referer → direct) |
 | `proxy/index.js` | HLS proxy (library) |
 | `proxy/advanced-proxy.js` | HLS proxy (custom, embed-first) |

@@ -145,7 +145,7 @@ async function main() {
       }
     }
 
-    // USA-centric sports on Streamed.pk (hockey also covered by onhockey.tv above)
+    // USA-centric sports on ppv.st (hockey also covered by onhockey.tv above)
     const sportsCategories = [
       'hockey',
       'baseball',
@@ -159,14 +159,14 @@ async function main() {
     try {
       streamedGames = await scrapeStreamedGames(browser, sportsCategories, previousByIdForReuse);
     } catch (error) {
-      console.error(`Streamed.pk scrape failed (continuing): ${error.message}`);
+      console.error(`ppv.st scrape failed (continuing): ${error.message}`);
     }
 
     let channels247 = [];
     try {
       channels247 = await scrape247Channels(browser, previousByIdForReuse);
     } catch (error) {
-      console.error(`Streamed 24/7 scrape failed (continuing): ${error.message}`);
+      console.error(`ppv.st 24/7 scrape failed (continuing): ${error.message}`);
     }
 
     let timstChannels = [];
@@ -178,8 +178,8 @@ async function main() {
 
     // Combine the games from all sources
     const allCurrentGames = [...onHockeyGames, ...streamedGames, ...channels247, ...timstChannels];
-    console.log(`\nFound ${onHockeyGames.length} games from onhockey.tv${skipOnHockey ? ' (skipped)' : ''} and ${streamedGames.length} games from Streamed.pk.`);
-    console.log(`Found ${channels247.length} Streamed 24/7 channels and ${timstChannels.length} TimStreams channels.`);
+    console.log(`\nFound ${onHockeyGames.length} games from onhockey.tv${skipOnHockey ? ' (skipped)' : ''} and ${streamedGames.length} games from ppv.st.`);
+    console.log(`Found ${channels247.length} ppv.st 24/7 channels and ${timstChannels.length} TimStreams channels.`);
     console.log(`Total unique items to process: ${allCurrentGames.length}`);
 
     // Log any new soccer leagues discovered

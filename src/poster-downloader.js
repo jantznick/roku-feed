@@ -14,9 +14,9 @@ export async function downloadPosters(games) {
     const imageMap = new Map();
     const downloadPromises = games.map(async game => {
         try {
-            // Prepend base URL if the poster URL is relative
-            const posterUrl = game.poster.startsWith('/') 
-                ? `https://streamed.pk${game.poster}` 
+            // Prepend CDN base if the poster URL is relative (legacy streamed.pk paths)
+            const posterUrl = game.poster.startsWith('/')
+                ? `https://static.ppvservices.st${game.poster}`
                 : game.poster;
 
             const response = await fetch(posterUrl);

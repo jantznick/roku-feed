@@ -15,7 +15,7 @@ Scraper (npm start)  →  Backblaze B2  →  React Native app
 
 | Component | Location | Role |
 |-----------|----------|------|
-| **Scraper** | Repo root (`npm start`) | Scrapes onhockey.tv + Streamed.pk, uploads posters and `feed.json` to B2 |
+| **Scraper** | Repo root (`npm start`) | Scrapes onhockey.tv + ppv.st, uploads posters and `feed.json` to B2 |
 | **Backblaze B2** | Cloud | Public JSON feed + poster images |
 | **React Native** | `react-native-app/` | Fetches feed URL, league grid, HLS playback (`expo-video`) |
 | **Web viewer** | `web/` | Simple phone/laptop browser UI for feed + HLS (Docker) |
@@ -114,17 +114,17 @@ On startup the scraper **downloads the previous feed from B2** (when configured)
 
 ### Sports scope
 
-- **onhockey.tv:** NHL, NHL Rookie Camp, NCAA D1 Men, AHL. Links often appear only near game time; curl/wget get Cloudflare challenges — the scraper uses Puppeteer **stealth** + system Chrome when available (UA/client-hints matched to that Chrome), reuses `data/onhockey-cf-cookies.json` (`cf_clearance`), and does a single load (with one clearance-cookie reload if the interstitial sticks). A failed onhockey scrape no longer aborts Streamed/TimStreams. Deep-scrape preference: `mtchor` → `fluidtv` → `streamd` → `plytvme` → `sportpl` → `brcove` / `vodcast`.
+- **onhockey.tv:** NHL, NHL Rookie Camp, NCAA D1 Men, AHL. Links often appear only near game time; curl/wget get Cloudflare challenges — the scraper uses Puppeteer **stealth** + system Chrome when available (UA/client-hints matched to that Chrome), reuses `data/onhockey-cf-cookies.json` (`cf_clearance`), and does a single load (with one clearance-cookie reload if the interstitial sticks). A failed onhockey scrape no longer aborts ppv.st/TimStreams. Deep-scrape preference: `mtchor` → `fluidtv` → `streamd` → `plytvme` → `sportpl` → `brcove` / `vodcast`.
   - **plytvme** must load inside a parent iframe (direct `embedsports.me` URLs show “Direct access blocked”). Nested player is on dervlin; headless Chrome often fails there — for best results on a server run with a display (`PROXY_HEADLESS=false` or `xvfb-run -a` with headless off).
   - **sportpl** (sportplus.watch) is often geo-blocked in the US; the scraper fails fast on that message.
   - **streamd** strips click-stealing `#dontfoid` overlays and can read JW playlist files.
-- **Streamed.pk:** hockey, baseball, basketball, american-football, motor-sports
+- **ppv.st:** hockey, baseball, basketball, american-football, motor-sports, football
 - **24/7 channels:** USA networks (NHL Network, MLB TV, NBA TV, ESPN/NFL, etc.)
 - **TimStreams (timst.top):** live-TV split by genre — US sports → `24/7 Channels`, US entertainment → `Entertainment`, all cartoons → `Cartoons`. Uses each channel’s catalog `logo` as the Roku poster (no local banner art required). Signed HLS via grandemx; may need the LAN proxy / home IP when datacenter CDNs 404.
 
-### Streamed.pk (live only)
+### ppv.st (live only)
 
-The scraper uses `GET https://streamed.pk/api/matches/live`, then keeps only your configured sports. If nothing is live in those categories, the feed will be empty — that is expected.
+The scraper uses `GET https://api.ppv.st/api/streams`, then keeps only currently live events in your configured sports. If nothing is live in those categories, the feed will be empty — that is expected.
 
 ### Favorite teams (feed order)
 
@@ -215,7 +215,7 @@ To generate a feed **without** proxy URLs while your proxy machine is down:
 SKIP_PROXY=true
 ```
 
-in `.env`, then run `npm start`. Streamed.pk streams may still fail playback without a referer-capable client; onhockey / direct URLs may work.
+in `.env`, then run `npm start`. ppv.st streams may still fail playback without a referer-capable client; onhockey / direct URLs may work.
 
 ---
 

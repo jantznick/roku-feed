@@ -12,7 +12,7 @@ Research against the current scraper → B2 JSON pipeline (`src/index.js`), with
 Launch Chromium
   → load previous feed (B2 or dist/feed.json)
   → scrape onhockey.tv list          [optional via SKIP_ONHOCKEY]
-  → scrape Streamed.pk live matches
+  → scrape ppv.st live matches
        GET /api/matches/live  (fast)
        GET /api/stream/...    (fast)
        Puppeteer resolve every embed → m3u8  (slow, sequential)

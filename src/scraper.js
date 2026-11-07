@@ -8,7 +8,7 @@ const SCRAPER_URL = "https://onhockey.tv/";
 const DEBUG_FILE_PATH = "debug-output.html";
 const CF_COOKIE_PATH = path.resolve(process.cwd(), 'data', 'onhockey-cf-cookies.json');
 
-/** Max resolved streams to keep per onhockey game (mirrors Streamed.pk). */
+/** Max resolved streams to keep per onhockey game (mirrors ppv.st). */
 const MAX_STREAMS_PER_GAME = 5;
 
 /**
@@ -929,7 +929,7 @@ async function resolveOnHockeyStream(browser, stream) {
         };
     }
 
-    // Everyone else: same embed interceptor used by Streamed.pk (captures Referer).
+    // Everyone else: same embed interceptor used by ppv.st (captures Referer).
     if (!ACCEPTED_PROVIDERS.has(stream.provider)) {
         return null;
     }

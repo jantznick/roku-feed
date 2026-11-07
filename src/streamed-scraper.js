@@ -6,10 +6,30 @@ import { buildFetchHeaders } from './proxy-payload.js';
 import { mapPool, getEmbedConcurrency } from './async-pool.js';
 import { shouldReuseStreams, reuseStreamsFromFeedItem } from './stream-reuse.js';
 
-const LIVE_MATCHES_URL = 'https://streamed.pk/api/matches/live';
-const STREAM_API_BASE_URL = 'https://streamed.pk/api/stream';
+/** ppv.st (successor to streamed.pk) — primary + fallback API hosts. */
+const API_BASES = [
+    'https://api.ppv.st/api',
+    'https://api.ppv.cx/api',
+];
+const STREAMS_PATH = '/streams';
 const SAMPLE_DATA_PATH = path.resolve(process.cwd(), 'data', 'streamed-live-sample.json');
 const MAX_STREAMS_PER_GAME = 5;
+
+/**
+ * Config slugs used in index.js → ppv.st category names from /api/streams.
+ * Keep the slug interface so callers do not need to change.
+ */
+const CATEGORY_ALIASES = {
+    hockey: 'Ice Hockey',
+    'ice-hockey': 'Ice Hockey',
+    baseball: 'Baseball',
+    basketball: 'Basketball',
+    'american-football': 'American Football',
+    'motor-sports': 'Motorsports',
+    motorsports: 'Motorsports',
+    football: 'Football',
+    soccer: 'Football',
+};
 
 /**
  * Sanitizes a string to be URL- and filename-safe.
@@ -29,8 +49,113 @@ function slugify(text) {
     .replace(/^-+|-+$/g, ''); // Trim hyphens from start/end
 }
 
-function buildGameId(title, date) {
-    return `${slugify(title)}-${new Date(date || Date.now()).toISOString().slice(0, 10)}`;
+function buildGameId(uriName, title, startsAtSec) {
+    if (uriName) {
+        return slugify(String(uriName).replace(/\//g, '-'));
+    }
+    const dateMs = startsAtSec ? startsAtSec * 1000 : Date.now();
+    return `${slugify(title)}-${new Date(dateMs).toISOString().slice(0, 10)}`;
+}
+
+function normalizeCategoryName(value) {
+    if (!value) return '';
+    const key = String(value).trim().toLowerCase();
+    if (CATEGORY_ALIASES[key]) return CATEGORY_ALIASES[key];
+    // Allow passing the display name directly ("Basketball", "Ice Hockey")
+    return String(value).trim();
+}
+
+function resolveWantedCategories(categories) {
+    return new Set(categories.map(normalizeCategoryName).filter(Boolean));
+}
+
+async function fetchJson(url) {
+    const response = await fetch(url, {
+        headers: {
+            Accept: 'application/json',
+            Origin: 'https://ppv.st',
+            Referer: 'https://ppv.st/',
+            'User-Agent':
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        },
+    });
+    if (!response.ok) {
+        throw new Error(`API returned status ${response.status} for ${url}`);
+    }
+    return response.json();
+}
+
+async function fetchStreamsPayload() {
+    let lastError;
+    for (const base of API_BASES) {
+        const url = `${base}${STREAMS_PATH}`;
+        try {
+            const payload = await fetchJson(url);
+            if (payload?.success && Array.isArray(payload.streams)) {
+                return payload;
+            }
+            lastError = new Error(`Unexpected streams payload from ${url}`);
+        } catch (error) {
+            lastError = error;
+        }
+    }
+    throw lastError || new Error('Failed to fetch ppv.st streams');
+}
+
+function flattenStreams(payload) {
+    const nowSec = payload.timestamp || Math.floor(Date.now() / 1000);
+    const flat = [];
+    for (const group of payload.streams || []) {
+        const category = group.category || group.name || '';
+        for (const stream of group.streams || []) {
+            flat.push({
+                ...stream,
+                category_name: stream.category_name || category,
+                _nowSec: nowSec,
+            });
+        }
+    }
+    return flat;
+}
+
+function isCurrentlyLive(stream, nowSec) {
+    if (stream.always_live) return true;
+    const start = Number(stream.starts_at) || 0;
+    const end = Number(stream.ends_at) || 0;
+    if (!start) return false;
+    // Treat missing/zero end as still live once started (rare for events).
+    if (!end) return start <= nowSec;
+    return start <= nowSec && nowSec < end;
+}
+
+/**
+ * Collect embed URLs for a stream. Prefer the HD primary iframe, then HD
+ * substreams, then SD — capped later by MAX_STREAMS_PER_GAME.
+ */
+function collectEmbedInfos(stream) {
+    const embeds = [];
+    const seen = new Set();
+
+    const push = (iframe, sourceName) => {
+        if (!iframe || seen.has(iframe) || iframe.includes('gg.poocloud.in')) return;
+        seen.add(iframe);
+        embeds.push({ url: iframe, sourceName: sourceName || 'ppv' });
+    };
+
+    push(stream.iframe, stream.source_tag || 'HD');
+
+    const subs = [...(stream.substreams || [])];
+    subs.sort((a, b) => {
+        const aHd = /HD/i.test(a.source_tag || '') ? 0 : 1;
+        const bHd = /HD/i.test(b.source_tag || '') ? 0 : 1;
+        return aHd - bHd;
+    });
+
+    for (const sub of subs) {
+        push(sub.iframe, sub.source_tag || 'ppv');
+    }
+
+    return embeds.slice(0, MAX_STREAMS_PER_GAME);
 }
 
 /**
@@ -88,22 +213,22 @@ async function resolveEmbedJobs(browser, resolveJobs) {
  * @param {Map<string, object>} [previousById] - prior feed items for TTL stream reuse
  */
 export async function scrapeStreamedGames(browser, sportsCategories, previousById = new Map()) {
-    console.log(`\n--- Scraping Streamed.pk for: ${sportsCategories.join(', ')} ---`);
+    console.log(`\n--- Scraping ppv.st for: ${sportsCategories.join(', ')} ---`);
 
     // 1. Get all game data from the API (cheap — no Puppeteer)
     const allGames = await getLiveStreams(sportsCategories);
     if (allGames.length === 0) {
-        console.log('No streams found for the specified categories on Streamed.pk.');
+        console.log('No streams found for the specified categories on ppv.st.');
         return [];
     }
 
-    console.log(`\n--- Processing ${allGames.length} games from Streamed.pk... ---`);
+    console.log(`\n--- Processing ${allGames.length} games from ppv.st... ---`);
 
     const resolveJobs = [];
     let reusedCount = 0;
 
     for (const game of allGames) {
-        game.id = buildGameId(game.title, game.date);
+        game.id = buildGameId(game.uriName, game.title, game.date);
         game.finalStreamInfo = [];
         game.reusedStreamLinks = null;
 
@@ -159,15 +284,21 @@ export async function scrapeStreamedGames(browser, sportsCategories, previousByI
 
         if (streamLinks.length === 0) return null;
 
-        const teams = game.title.includes(' vs ') ? game.title.split(' vs ') : [game.title, ''];
+        const teams = game.title.includes(' vs ')
+            ? game.title.split(' vs ')
+            : game.title.includes(' at ')
+                ? game.title.split(' at ')
+                : [game.title, ''];
+
+        const startMs = (game.date || Math.floor(Date.now() / 1000)) * 1000;
 
         return {
             id: game.id,
             name: game.title,
             teams: teams,
-            time: new Date(game.date || Date.now()).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
+            time: new Date(startMs).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }),
             shortDescription: `Live stream of the ${game.title} match.`,
-            releaseDate: new Date(game.date || Date.now()).toISOString(),
+            releaseDate: new Date(startMs).toISOString(),
             dateAdded: dateAdded,
             league: getLeague(game),
             poster: game.poster,
@@ -175,88 +306,82 @@ export async function scrapeStreamedGames(browser, sportsCategories, previousByI
         };
     }).filter(Boolean);
 
-    console.log(`✅ Found and processed ${formattedGames.length} games from Streamed.pk.`);
+    console.log(`✅ Found and processed ${formattedGames.length} games from ppv.st.`);
     return formattedGames;
 }
 
 function getLeague(game) {
-    if (game.category === 'football' && game.title.includes(':')) {
+    if (game.tag) return game.tag;
+    if (game.category === 'Football' && game.title.includes(':')) {
         return game.title.split(':')[0].trim();
     }
-    return game.category.toUpperCase();
+    return (game.category || 'Sports').toUpperCase();
 }
 
 async function getLiveStreams(categories) {
     try {
         const isDebug = process.env.DEBUG === 'true';
-        let matches;
+        let flatStreams;
 
         if (isDebug) {
-            console.log('DEBUG MODE: Reading from local sample file for Streamed.pk...');
+            console.log('DEBUG MODE: Reading from local sample file for ppv.st...');
             try {
                 const sampleData = await fs.readFile(SAMPLE_DATA_PATH, 'utf8');
-                matches = JSON.parse(sampleData);
+                const parsed = JSON.parse(sampleData);
+                // Support both the new ppv.st payload shape and a pre-flattened array.
+                flatStreams = Array.isArray(parsed)
+                    ? parsed
+                    : flattenStreams(parsed);
             } catch (error) {
                 console.error(`Error reading sample file at ${SAMPLE_DATA_PATH}. Please ensure the file has been created.`, error);
                 return [];
             }
         } else {
-            console.log('Fetching live matches from Streamed.pk...');
-            const matchesResponse = await fetch(LIVE_MATCHES_URL);
-            if (!matchesResponse.ok) throw new Error(`API returned status ${matchesResponse.status}`);
-            matches = await matchesResponse.json();
+            console.log('Fetching streams from ppv.st...');
+            const payload = await fetchStreamsPayload();
+            flatStreams = flattenStreams(payload);
         }
 
-        const sportGames = matches.filter(match => categories.includes(match.category) && match.sources && match.sources.length > 0);
+        const wanted = resolveWantedCategories(categories);
+        const nowSec = flatStreams[0]?._nowSec || Math.floor(Date.now() / 1000);
+
+        const sportGames = flatStreams.filter((stream) => {
+            if (stream.always_live) return false; // handled by scrape247Channels
+            if (!wanted.has(stream.category_name)) return false;
+            if (!stream.iframe && !(stream.substreams || []).some((s) => s.iframe)) return false;
+            // DEBUG sample dumps are static — skip the "currently live" window filter.
+            return isDebug ? true : isCurrentlyLive(stream, nowSec);
+        });
 
         if (sportGames.length === 0) {
             return [];
         }
 
         const categoryCounts = sportGames.reduce((acc, game) => {
-            acc[game.category] = (acc[game.category] || 0) + 1;
+            acc[game.category_name] = (acc[game.category_name] || 0) + 1;
             return acc;
         }, {});
         console.log('Games found after filtering by category:', categoryCounts);
 
-
-        console.log(`Found ${sportGames.length} games across specified categories. Fetching initial stream info...`);
+        console.log(`Found ${sportGames.length} live games across specified categories.`);
         const allGameStreams = [];
 
         for (const game of sportGames) {
             try {
-                const allEmbedUrls = [];
+                const allEmbedUrls = collectEmbedInfos(game);
+                if (allEmbedUrls.length === 0) continue;
 
-                for (const source of game.sources) {
-                    try {
-                        const streamApiUrl = `${STREAM_API_BASE_URL}/${source.source}/${source.id}`;
-                        const streamsResponse = await fetch(streamApiUrl);
-                        if (!streamsResponse.ok) continue;
-                        const streams = await streamsResponse.json();
-
-                        if (streams && streams.length > 0) {
-                            const embedInfos = streams.map(stream => ({
-                                url: stream.embedUrl,
-                                sourceName: source.source
-                            })).filter(info => !info.url.includes('gg.poocloud.in'));
-                            allEmbedUrls.push(...embedInfos);
-                        }
-                    } catch (sourceError) {
-                        // Suppress verbose warnings during normal operation
-                    }
-                }
-
-                if (allEmbedUrls.length > 0) {
-                    allGameStreams.push({
-                        title: game.title,
-                        category: game.category,
-                        embedUrls: allEmbedUrls,
-                        date: game.date,
-                        poster: game.poster
-                    });
-                }
+                allGameStreams.push({
+                    title: game.name,
+                    category: game.category_name,
+                    tag: game.tag,
+                    embedUrls: allEmbedUrls,
+                    date: game.starts_at,
+                    poster: game.poster,
+                    uriName: game.uri_name,
+                });
             } catch (gameError) {
-                console.error(`Could not process game "${game.title}": ${gameError.message}`);
+                console.error(`Could not process game "${game.name}": ${gameError.message}`);
             }
         }
 
@@ -282,7 +407,7 @@ async function logReplayCheck(streamInfo) {
         } else if (streamInfo.referer?.includes('exposestrat.com')) {
             console.log('  -> zohanayaan CDN: Node replay often works with exposestrat.com referer.');
         } else {
-            console.log('  -> strmd CDN: Node replay usually fails (403) — proxy will use Chromium.');
+            console.log('  -> CDN: Node replay usually fails (403) — proxy will use Chromium.');
         }
         return response.ok;
     } catch (error) {
@@ -314,37 +439,52 @@ export async function getFinalStreamUrl(browser, embedUrl, sourceName) {
  * @param {Map<string, object>} [previousById]
  */
 export async function scrape247Channels(browser, previousById = new Map()) {
-    console.log(`\n--- Scraping for 24/7 Channels ---`);
-    const channelMap = {
-        'hockey': ['NHL NETWORK'],
-        'baseball': ['MLB TV', 'Marquee Sports Network'],
-        'basketball': ['TNT', 'NBA TV'],
-        'american-football': ['ESPN USA', 'NFL REDZONE', 'NFL NETWORK']
-    };
+    console.log(`\n--- Scraping ppv.st for 24/7 Channels ---`);
+    // Match against channel name / source_tag (case-insensitive substring).
+    const targetTitles = [
+        'NHL NETWORK',
+        'MLB TV',
+        'Marquee Sports Network',
+        'TNT',
+        'NBA TV',
+        'ESPN USA',
+        'NFL REDZONE',
+        'NFL NETWORK',
+    ];
 
     let allChannels = [];
 
-    for (const sport in channelMap) {
-        try {
-            const response = await fetch(`https://streamed.pk/api/matches/${sport}`);
-            if (!response.ok) continue;
+    try {
+        const isDebug = process.env.DEBUG === 'true';
+        let flatStreams;
 
-            const sportChannels = await response.json();
-            const targetTitles = channelMap[sport];
+        if (isDebug) {
+            const sampleData = await fs.readFile(SAMPLE_DATA_PATH, 'utf8');
+            const parsed = JSON.parse(sampleData);
+            flatStreams = Array.isArray(parsed) ? parsed : flattenStreams(parsed);
+        } else {
+            const payload = await fetchStreamsPayload();
+            flatStreams = flattenStreams(payload);
+        }
 
-            for (const channel of sportChannels) {
-                for (const targetTitle of targetTitles) {
-                    if (channel.title.toLowerCase().includes(targetTitle.toLowerCase())) {
-                        channel.cleanTitle = targetTitle;
-                        allChannels.push(channel);
-                        console.log(`  -> Matched API title "${channel.title}" to target "${targetTitle}"`);
-                        break;
-                    }
+        const alwaysLive = flatStreams.filter(
+            (s) => s.always_live || /24\/7/i.test(s.tag || '') || /24\/7/i.test(s.category_name || '')
+        );
+
+        for (const channel of alwaysLive) {
+            for (const targetTitle of targetTitles) {
+                const haystack = `${channel.name || ''} ${channel.source_tag || ''}`.toLowerCase();
+                if (haystack.includes(targetTitle.toLowerCase())) {
+                    channel.cleanTitle = targetTitle;
+                    allChannels.push(channel);
+                    console.log(`  -> Matched API title "${channel.name}" to target "${targetTitle}"`);
+                    break;
                 }
             }
-        } catch (error) {
-            console.error(`  -> Failed to fetch channels for ${sport}:`, error.message);
         }
+    } catch (error) {
+        console.error(`  -> Failed to fetch 24/7 channels from ppv.st:`, error.message);
+        return [];
     }
 
     if (allChannels.length === 0) {
@@ -361,29 +501,8 @@ export async function scrape247Channels(browser, previousById = new Map()) {
         channel.id = channel.cleanTitle.replace(/\s+/g, '-');
         channel.finalStreamInfo = [];
         channel.reusedStreamLinks = null;
-        channel.embedUrls = [];
-
-        for (const source of channel.sources) {
-             try {
-                const streamApiUrl = `${STREAM_API_BASE_URL}/${source.source}/${source.id}`;
-                const streamsResponse = await fetch(streamApiUrl);
-                if (!streamsResponse.ok) continue;
-                const streams = await streamsResponse.json();
-                if (streams && streams.length > 0) {
-                    const embedInfos = streams.map(s => ({
-                        url: s.embedUrl,
-                        sourceName: source.source
-                    })).filter(info => !info.url.includes('gg.poocloud.in'));
-                    channel.embedUrls.push(...embedInfos);
-                }
-            } catch (e) {}
-        }
-
-        channel.embedUrls.sort((a, b) => {
-            const aIsPoo = a.url.includes('gg.poocloud.in');
-            const bIsPoo = b.url.includes('gg.poocloud.in');
-            return aIsPoo - bIsPoo;
-        });
+        channel.embedUrls = collectEmbedInfos(channel);
+        channel.title = channel.name;
 
         const previousItem = previousById.get(channel.id);
         if (shouldReuseStreams(previousItem, channel.embedUrls, { currentTitle: channel.cleanTitle })) {
