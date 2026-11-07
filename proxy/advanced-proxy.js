@@ -27,7 +27,7 @@ const port = process.env.PORT || 8787;
 const proxyHost = process.env.PROXY_HOST || '192.168.1.50:8787';
 const debug = process.env.PROXY_DEBUG === 'true';
 
-const PROXY_VERSION = 'embed-first-v36-d1-rebase';
+const PROXY_VERSION = 'embed-first-v37-d1-http-first';
 
 function isLoopbackClient(req) {
     const ip = String(req.ip || req.socket?.remoteAddress || '');
@@ -299,7 +299,7 @@ function logManifestPreview(label, body) {
 console.log(`Starting ADVANCED HLS proxy (${PROXY_VERSION})...`);
 console.log(`  - Chromium mode: ${process.env.PROXY_HEADLESS === 'true' ? 'headless' : 'visible (set PROXY_HEADLESS=true for headless)'}`);
 console.log(`  - Rewriting segment URLs to host: ${proxyHost}`);
-console.log('  - /proxy d=1: HTTP first (TimStreams); Chromium fallback; WebP/PNG unwrap');
+console.log('  - /proxy d=1: HTTP immediately (TimStreams); Puppeteer only after 403/410');
 console.log('  - /proxy else: embed-first Chromium (Streamed / Daddy); live playlist + unwrap');
 console.log('  - /remux/{payload}: optional ffmpeg AAC-LC (feed uses /proxy)');
 
@@ -372,20 +372,26 @@ async function fetchUpstream(
 ) {
     const browserOptions = { embedUrl, referer, extraHeaders };
 
-    // GOAT TikTok .image segments: skip doomed Node fetch when we have an embed tab.
+    // GOAT TikTok .image: prefer Chromium only when an embed tab is already open.
+    // TimStreams d=1 must not block segment fetches on a cold Puppeteer resolve —
+    // Node + WebP unwrap is the scraper-proven path.
     if (
         directOk &&
         !isManifestRequest &&
         embedUrl &&
-        isDisguisedCdnSegment(streamUrl)
+        isDisguisedCdnSegment(streamUrl) &&
+        !skipChromiumFallback
     ) {
-        console.log('  - Fetch mode: Chromium (disguised CDN segment; skip d=1 HTTP)');
-        const browserResponse = await fetchViaBrowser(
-            streamUrl,
-            browserOptions,
-            isManifestRequest
-        );
-        return { response: browserResponse, mode: 'chromium' };
+        const { getEmbedPage } = await import('./embed-pages.js');
+        if (getEmbedPage(embedUrl)) {
+            console.log('  - Fetch mode: Chromium (disguised CDN; live embed tab)');
+            const browserResponse = await fetchViaBrowser(
+                streamUrl,
+                browserOptions,
+                isManifestRequest
+            );
+            return { response: browserResponse, mode: 'chromium' };
+        }
     }
 
     if (directOk) {
@@ -531,18 +537,41 @@ async function resolvePlaybackContext(
         };
     }
 
-    // d=1 is a fetch hint (HTTP-first), not a source identity. Always resolve
-    // the embed for a fresh URL, then master/variant-rebase like Streamed/Daddy.
-    // Blindly swapping every manifest to streamUrl broke multi-variant masters
-    // when scrape/replay set d=1 on Streamed.
+    // TimStreams (d=1): scraper already proved Node HTTP works. Use the feed URL
+    // immediately — do NOT block every Roku poll/segment on Puppeteer. Embed
+    // resolve only runs after a dead token (forceEmbed) or when we already have
+    // a warm cache from a prior refresh.
+    if (feedDirectOk && !forceEmbed) {
+        const cached = getCachedStream(embedUrl);
+        if (cached && isManifest) {
+            const mapped = mapManifestOntoResolved(streamUrl, cached);
+            return {
+                ...mapped,
+                referer: cached.referer || feedReferer,
+                extraHeaders: {},
+                directOk: true,
+            };
+        }
+        if (!cached) {
+            console.log('  - d=1: HTTP with feed URL (Puppeteer only if token dies)');
+        }
+        return {
+            upstreamUrl: streamUrl,
+            referer: feedReferer,
+            extraHeaders: {},
+            directOk: true,
+            manifestBaseUrl: streamUrl,
+            resolvedFromEmbed: false,
+        };
+    }
+
+    // Streamed / Daddy, or d=1 after 403/410: open/refresh the embed.
     let stream = getCachedStream(embedUrl);
     if (!stream || forceEmbed) {
         console.log(
             forceEmbed
                 ? '  - Re-resolving embed after failed manifest'
-                : feedDirectOk
-                    ? '  - d=1: awaiting embed for fresh signed m3u8'
-                    : '  - Awaiting embed resolve'
+                : '  - Awaiting embed resolve'
         );
         try {
             stream = await getResolvedStream(embedUrl, { force: forceEmbed });
@@ -554,7 +583,6 @@ async function resolvePlaybackContext(
                 upstreamUrl: streamUrl,
                 referer: feedReferer,
                 extraHeaders: feedHeaders,
-                // HTTP-only fallback; skip Chromium of the dead signed URL.
                 directOk: true,
                 manifestBaseUrl: streamUrl,
                 resolvedFromEmbed: false,
@@ -573,12 +601,10 @@ async function resolvePlaybackContext(
         ));
     }
 
-    // Fetch hint: feed d=1 wins; otherwise use resolve-time Node replay.
     const directOk = Boolean(feedDirectOk || stream.directFetchOk);
     return {
         upstreamUrl,
         referer: stream.referer || feedReferer,
-        // Slim payloads when HTTP-first or embed tab carries cookies.
         extraHeaders: directOk ? {} : (stream.requestHeaders || {}),
         directOk,
         manifestBaseUrl,
