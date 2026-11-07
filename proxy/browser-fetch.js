@@ -4,6 +4,7 @@ import {
     getLatestManifestEntry,
     getLatestManifestSourceUrl,
     invalidateManifestForMedia,
+    waitForCapturedSegment,
     waitForLatestManifestBody,
     waitForNewerManifestEntry,
 } from '../src/manifest-capture.js';
@@ -489,11 +490,7 @@ async function tryDirectSegmentFetch(url, referer, extraHeaders = {}) {
     const headers = { 'User-Agent': BROWSER_USER_AGENT };
     if (referer) {
         headers.Referer = referer;
-        try {
-            headers.Origin = new URL(referer).origin;
-        } catch {
-            // Optional
-        }
+        // No Origin — Daddy/wedd48c and TikTok often 403 when Origin is set.
     }
     if (extraHeaders.cookie) {
         headers.Cookie = extraHeaders.cookie;
@@ -518,6 +515,28 @@ async function tryDirectSegmentFetch(url, referer, extraHeaders = {}) {
         };
     } catch (error) {
         logStep(`Direct segment fetch failed: ${error.message}`);
+        return null;
+    }
+}
+
+/**
+ * Node fetch using the embed tab's cookie jar for this URL (Daddy needs CDN cookies;
+ * CDP re-GET of tokenized paths often 404s even while the player plays).
+ * @param {import('puppeteer').Page} page
+ * @param {string} url
+ * @param {string} referer
+ */
+async function trySegmentFetchWithPageCookies(page, url, referer) {
+    try {
+        const cookies = await page.cookies(url);
+        if (!cookies.length) {
+            return null;
+        }
+        const cookieHeader = cookies.map((c) => `${c.name}=${c.value}`).join('; ');
+        logStep(`Cookie-jar segment fetch (${cookies.length} cookie(s))`);
+        return tryDirectSegmentFetch(url, referer, { cookie: cookieHeader });
+    } catch (error) {
+        logStep(`Cookie-jar segment fetch failed: ${error.message}`);
         return null;
     }
 }
@@ -579,9 +598,14 @@ export async function fetchViaBrowser(url, { embedUrl, referer, extraHeaders = {
     }
 
     if (!isText) {
-        // Prefer bytes the embed player already downloaded — Daddy CDP re-GETs 404.
+        // Daddy: JW downloads segments into our sniff cache. Wait briefly for the
+        // player hit before CDP — tokenized wedd48c paths usually 404 on re-GET.
         if (embedAlive) {
-            const sniffer = getCapturedSegment(embedPage, url);
+            let sniffer = getCapturedSegment(embedPage, url);
+            if (!sniffer?.length) {
+                logStep('Waiting for player to download segment...');
+                sniffer = await waitForCapturedSegment(embedPage, url, 5000);
+            }
             if (sniffer?.length) {
                 logStep(`Serving player-sniffed segment (${sniffer.length} bytes)`);
                 return {
@@ -590,15 +614,20 @@ export async function fetchViaBrowser(url, { embedUrl, referer, extraHeaders = {
                     body: sniffer,
                 };
             }
+
+            const withCookies = await trySegmentFetchWithPageCookies(
+                embedPage,
+                url,
+                referer
+            );
+            if (withCookies && !withCookies.failedStatus) {
+                return withCookies;
+            }
+
             try {
                 return await fetchSegmentFromBrowserPage(embedPage, url, `embed:${embedUrl}`);
             } catch (embedError) {
                 logStep(`Embed-page segment fetch failed (${embedError.message}); trying direct HTTP`);
-                if (/ERR_HTTP_RESPONSE_CODE_FAILURE|404|410|403/.test(embedError.message)) {
-                    if (invalidateManifestForMedia(embedPage, url)) {
-                        logStep('Invalidated stale embed playlist after browser segment failure');
-                    }
-                }
             }
         }
 
@@ -607,6 +636,16 @@ export async function fetchViaBrowser(url, { embedUrl, referer, extraHeaders = {
             return direct;
         }
         if (direct?.failedStatus === 404 && embedAlive) {
+            // Last chance: player may have fetched it while we were failing.
+            const late = getCapturedSegment(embedPage, url);
+            if (late?.length) {
+                logStep(`Serving late player-sniffed segment (${late.length} bytes)`);
+                return {
+                    statusCode: 200,
+                    headers: { 'content-type': 'video/MP2T' },
+                    body: late,
+                };
+            }
             if (invalidateManifestForMedia(embedPage, url)) {
                 logStep('Invalidated stale embed playlist after segment 404');
             }

@@ -225,14 +225,41 @@ export async function attachManifestCapture(page, log = () => {}) {
         /** Bytes the embed player already downloaded for this segment URL. */
         getSegment(url) {
             const hit = segmentsByUrl.get(url);
-            if (!hit) {
+            if (hit) {
+                if (Date.now() - hit.at > 120000) {
+                    segmentsByUrl.delete(url);
+                } else {
+                    return hit.body;
+                }
+            }
+            // Player may have used a slightly different absolute form; match path.
+            const path = pathnameOf(url);
+            if (!path) {
                 return null;
             }
-            if (Date.now() - hit.at > 120000) {
-                segmentsByUrl.delete(url);
-                return null;
+            for (const [u, entry] of segmentsByUrl) {
+                if (pathnameOf(u) === path) {
+                    if (Date.now() - entry.at > 120000) {
+                        segmentsByUrl.delete(u);
+                        continue;
+                    }
+                    return entry.body;
+                }
             }
-            return hit.body;
+            return null;
+        },
+
+        /** @param {string} url @param {number} [timeoutMs] */
+        async waitForSegment(url, timeoutMs = 5000) {
+            const deadline = Date.now() + timeoutMs;
+            while (Date.now() < deadline) {
+                const body = this.getSegment(url);
+                if (body?.length) {
+                    return body;
+                }
+                await sleep(100);
+            }
+            return this.getSegment(url);
         },
 
         /**
@@ -457,6 +484,20 @@ export function getCapturedSegment(page, url) {
         return null;
     }
     return capture.getSegment?.(url) || null;
+}
+
+/**
+ * Wait for the embed player to download a segment (JW buffers while we proxy).
+ * @param {import('puppeteer').Page} page
+ * @param {string} url
+ * @param {number} [timeoutMs]
+ */
+export async function waitForCapturedSegment(page, url, timeoutMs = 5000) {
+    const capture = capturesByPage.get(page);
+    if (!capture || !url) {
+        return null;
+    }
+    return capture.waitForSegment?.(url, timeoutMs) || null;
 }
 
 /**
