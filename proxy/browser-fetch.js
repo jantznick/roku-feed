@@ -3,7 +3,6 @@ import {
     getCapturedSegment,
     getLatestManifestEntry,
     getLatestManifestSourceUrl,
-    invalidateManifestForMedia,
     waitForCapturedSegment,
     waitForLatestManifestBody,
     waitForNewerManifestEntry,
@@ -106,16 +105,43 @@ async function withPageLock(key, fn) {
     }
 }
 
+function originOf(url) {
+    try {
+        return new URL(url).origin;
+    } catch {
+        return '';
+    }
+}
+
+/**
+ * The frame whose origin matches the player referer (Daddy plays inside a
+ * dembed.st iframe; fetching from the thedaddy.li top frame is CORS-blocked
+ * and CDP from it sends the wrong Origin/Referer).
+ * @param {import('puppeteer').Page} page
+ * @param {string} [playerOrigin]
+ */
+function findPlayerFrame(page, playerOrigin) {
+    if (!playerOrigin) {
+        return page.mainFrame();
+    }
+    return page.frames().find((frame) => originOf(frame.url()) === playerOrigin)
+        || page.mainFrame();
+}
+
 /**
  * Fetch a segment via in-page fetch() on an embed-origin page (real cookies + Origin).
  * page.goto(.ts) aborts; blank tabs lack the embed Origin and fail CORS/auth.
  * @param {import('puppeteer').Page} page
  * @param {string} url
+ * @param {string} [playerOrigin]
  */
-async function fetchSegmentInPage(page, url) {
-    logStep(`In-page segment fetch: ${url.slice(0, 100)}...`);
+async function fetchSegmentInPage(page, url, playerOrigin = '') {
+    const frame = findPlayerFrame(page, playerOrigin);
+    logStep(
+        `In-page segment fetch (${originOf(frame.url()) || 'main'}): ${url.slice(0, 100)}...`
+    );
 
-    const result = await page.evaluate(async (segmentUrl) => {
+    const result = await frame.evaluate(async (segmentUrl) => {
         try {
             const response = await fetch(segmentUrl, {
                 credentials: 'include',
@@ -163,13 +189,24 @@ async function fetchSegmentInPage(page, url) {
  * @param {import('puppeteer').Page} page
  * @param {string} url
  */
-async function fetchSegmentViaCdp(page, url) {
+async function fetchSegmentViaCdp(page, url, playerOrigin = '') {
     logStep(`CDP segment fetch: ${url.slice(0, 100)}...`);
     const client = await page.createCDPSession();
 
     try {
         const { frameTree } = await client.send('Page.getFrameTree');
-        const frameId = frameTree?.frame?.id;
+        let frameId = frameTree?.frame?.id;
+        if (playerOrigin) {
+            const stack = [frameTree];
+            while (stack.length) {
+                const node = stack.pop();
+                if (originOf(node?.frame?.url) === playerOrigin) {
+                    frameId = node.frame.id;
+                    break;
+                }
+                stack.push(...(node?.childFrames || []));
+            }
+        }
         if (!frameId) {
             throw new Error('CDP frame id missing');
         }
@@ -225,14 +262,15 @@ async function fetchSegmentViaCdp(page, url) {
  * @param {import('puppeteer').Page} page
  * @param {string} url
  * @param {string} [lockKey]
+ * @param {string} [playerOrigin] origin of the frame that plays the stream
  */
-async function fetchSegmentFromBrowserPage(page, url, lockKey = 'page') {
+async function fetchSegmentFromBrowserPage(page, url, lockKey = 'page', playerOrigin = '') {
     return withPageLock(lockKey, async () => {
         try {
-            return await fetchSegmentInPage(page, url);
+            return await fetchSegmentInPage(page, url, playerOrigin);
         } catch (inPageError) {
             logStep(`In-page segment fetch failed (${inPageError.message}); trying CDP`);
-            return fetchSegmentViaCdp(page, url);
+            return fetchSegmentViaCdp(page, url, playerOrigin);
         }
     });
 }
@@ -519,28 +557,6 @@ async function tryDirectSegmentFetch(url, referer, extraHeaders = {}) {
     }
 }
 
-/**
- * Node fetch using the embed tab's cookie jar for this URL (Daddy needs CDN cookies;
- * CDP re-GET of tokenized paths often 404s even while the player plays).
- * @param {import('puppeteer').Page} page
- * @param {string} url
- * @param {string} referer
- */
-async function trySegmentFetchWithPageCookies(page, url, referer) {
-    try {
-        const cookies = await page.cookies(url);
-        if (!cookies.length) {
-            return null;
-        }
-        const cookieHeader = cookies.map((c) => `${c.name}=${c.value}`).join('; ');
-        logStep(`Cookie-jar segment fetch (${cookies.length} cookie(s))`);
-        return tryDirectSegmentFetch(url, referer, { cookie: cookieHeader });
-    } catch (error) {
-        logStep(`Cookie-jar segment fetch failed: ${error.message}`);
-        return null;
-    }
-}
-
 export async function fetchViaBrowser(url, { embedUrl, referer, extraHeaders = {} }, isText) {
     const embedPage = embedUrl ? getEmbedPage(embedUrl) : null;
     const embedAlive = embedPage && !embedPage.isClosed();
@@ -598,36 +614,38 @@ export async function fetchViaBrowser(url, { embedUrl, referer, extraHeaders = {
     }
 
     if (!isText) {
-        // Daddy: JW downloads segments into our sniff cache. Wait briefly for the
-        // player hit before CDP — tokenized wedd48c paths usually 404 on re-GET.
         if (embedAlive) {
-            let sniffer = getCapturedSegment(embedPage, url);
-            if (!sniffer?.length) {
-                logStep('Waiting for player to download segment...');
-                sniffer = await waitForCapturedSegment(embedPage, url, 5000);
-            }
-            if (sniffer?.length) {
-                logStep(`Serving player-sniffed segment (${sniffer.length} bytes)`);
-                return {
-                    statusCode: 200,
-                    headers: { 'content-type': 'video/MP2T' },
-                    body: sniffer,
-                };
-            }
-
-            const withCookies = await trySegmentFetchWithPageCookies(
-                embedPage,
-                url,
-                referer
-            );
-            if (withCookies && !withCookies.failedStatus) {
-                return withCookies;
+            const sniffed = () => {
+                const body = getCapturedSegment(embedPage, url);
+                if (!body?.length) {
+                    return null;
+                }
+                logStep(`Serving player-sniffed segment (${body.length} bytes)`);
+                return { statusCode: 200, headers: { 'content-type': 'video/MP2T' }, body };
+            };
+            const hit = sniffed();
+            if (hit) {
+                return hit;
             }
 
+            // Fetch from the frame that plays the stream (Daddy: dembed.st iframe),
+            // not the outer page — that is CORS-blocked and sends the wrong Origin.
+            const playerOrigin = originOf(referer);
             try {
-                return await fetchSegmentFromBrowserPage(embedPage, url, `embed:${embedUrl}`);
+                return await fetchSegmentFromBrowserPage(
+                    embedPage,
+                    url,
+                    `embed:${embedUrl}`,
+                    playerOrigin
+                );
             } catch (embedError) {
-                logStep(`Embed-page segment fetch failed (${embedError.message}); trying direct HTTP`);
+                logStep(`Player-frame segment fetch failed (${embedError.message})`);
+            }
+
+            const late = await waitForCapturedSegment(embedPage, url, 1500);
+            if (late?.length) {
+                logStep(`Serving late player-sniffed segment (${late.length} bytes)`);
+                return { statusCode: 200, headers: { 'content-type': 'video/MP2T' }, body: late };
             }
         }
 
@@ -635,20 +653,14 @@ export async function fetchViaBrowser(url, { embedUrl, referer, extraHeaders = {
         if (direct && !direct.failedStatus) {
             return direct;
         }
-        if (direct?.failedStatus === 404 && embedAlive) {
-            // Last chance: player may have fetched it while we were failing.
-            const late = getCapturedSegment(embedPage, url);
-            if (late?.length) {
-                logStep(`Serving late player-sniffed segment (${late.length} bytes)`);
-                return {
-                    statusCode: 200,
-                    headers: { 'content-type': 'video/MP2T' },
-                    body: late,
-                };
-            }
-            if (invalidateManifestForMedia(embedPage, url)) {
-                logStep('Invalidated stale embed playlist after segment 404');
-            }
+        if (embedAlive) {
+            // The session tab is on the same wrong origin — don't burn another
+            // round of fetches; let Roku move on to the next segment/poll.
+            return {
+                statusCode: direct?.failedStatus || 502,
+                headers: {},
+                body: '',
+            };
         }
         logStep('Direct segment fetch failed; falling back to session tab');
     }
