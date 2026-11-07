@@ -27,7 +27,7 @@ const port = process.env.PORT || 8787;
 const proxyHost = process.env.PROXY_HOST || '192.168.1.50:8787';
 const debug = process.env.PROXY_DEBUG === 'true';
 
-const PROXY_VERSION = 'embed-first-v41-nav-referer';
+const PROXY_VERSION = 'embed-first-v42-variant-fix';
 
 function isLoopbackClient(req) {
     const ip = String(req.ip || req.socket?.remoteAddress || '');
@@ -484,13 +484,30 @@ function mapManifestOntoResolved(streamUrl, stream) {
     const masterBody = stream.manifestBody || '';
     const isMaster = masterBody.includes('#EXT-X-STREAM-INF');
     if (isMaster) {
-        let reqSuffix = '';
+        let reqPath = '';
+        let masterPath = '';
         try {
-            reqSuffix = qualityPathSuffix(new URL(streamUrl).pathname);
+            reqPath = new URL(streamUrl).pathname;
+            masterPath = new URL(stream.streamUrl).pathname;
         } catch {
-            reqSuffix = '';
+            // fall through to master
         }
         const variants = masterVariantSuffixes(masterBody);
+        // Variant request (e.g. tracks-v1a1/mono.ts.m3u8): resolve it against the
+        // fresh master. Never answer a variant with the master — Roku loops forever.
+        const variant = [...variants].find((v) => reqPath.endsWith(`/${v}`));
+        if (variant && reqPath !== masterPath) {
+            const fresh = new URL(variant, stream.streamUrl).href;
+            if (fresh !== streamUrl) {
+                console.log(`  - Rebased variant → ${fresh.slice(0, 100)}...`);
+            }
+            return {
+                upstreamUrl: fresh,
+                manifestBaseUrl: fresh,
+                resolvedFromEmbed: fresh !== streamUrl,
+            };
+        }
+        const reqSuffix = qualityPathSuffix(reqPath);
         if (!reqSuffix || reqSuffix === 'playlist.m3u8' || !variants.has(reqSuffix)) {
             upstreamUrl = stream.streamUrl;
             manifestBaseUrl = stream.streamUrl;
@@ -601,7 +618,10 @@ async function resolvePlaybackContext(
         ));
     }
 
-    const directOk = Boolean(feedDirectOk || stream.directFetchOk);
+    // Only the feed's d=1 (TimStreams) selects plain HTTP. A resolve-time Node
+    // replay 200 (full headers + cookies) does not mean minimal-header HTTP works
+    // — Daddy then 403'd every poll instead of using the live player captures.
+    const directOk = Boolean(feedDirectOk);
     return {
         upstreamUrl,
         referer: stream.referer || feedReferer,
