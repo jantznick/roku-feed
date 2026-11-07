@@ -34,7 +34,7 @@ Clients only talk to your proxy; the proxy talks to the stream host.
 |--------|----------------------|------------------|
 | **ppv.st** (live + 24/7) | Referer + `embedUrl`; `d=1` when Node replay OK | Yes, unless `SKIP_PROXY=true` |
 | **TimStreams** | Signed `.m3u8` + Referer + `e`; often `d=1` | Yes — Roku needs WebP-TS unwrap |
-| **DaddyLive** | Referer + `e`; never `d=1` | Yes — live playlist + embed segments |
+| **DaddyLive** | Referer + `e`; never `d=1` | Yes — proxy decrypts the sealed playlist and unwraps TIKTIKPX PNG segments |
 | **onhockey.tv** | mtchor/streamd/plytvme/sportpl get Referer; fluidtv/brcove often raw CDN | Partial — only when Referer is set |
 
 If Puppeteer does not capture a referer, the stream stays direct. Unchanged feed items keep a signed `u` but advanced-proxy refreshes via payload `e`.
@@ -83,7 +83,8 @@ Run **`proxy/advanced-proxy.js`** on port **8787** (Docker compose does this). P
 
 - **Stack:** ESM, Express, Puppeteer (`proxy/browser-fetch.js`)
 - **d=1 (TimStreams):** HTTP first; Chromium fallback; WebP-TS unwrap for Roku
-- **Otherwise (Streamed / Daddy):** open embed `e`, serve **live** playlist captures (pathname + seq), rewrite segments slim (no cookie headers in URL)
+- **Daddy (`edge.wedd48c.top/premiumN/index.m3u8`):** no browser. `proxy/daddy-playlist.js` gets `{token,k}` from `/api/playlist-token?slug=premiumN`, fetches `index.m3u8?t=token`, and AES-CTR-decrypts each segment line (counter = media sequence) into a TikTok-CDN PNG URL. Segments are plain HTTP; the PNG pixels hold `TIKTIKPX` + gzip(TS). Falls back to the embed path if the token API fails.
+- **Otherwise (Streamed / India):** open embed `e`, serve **live** playlist captures (pathname + seq), rewrite segments slim (no cookie headers in URL)
 - **Segments:** embed-tab fetch / CDP first when the player is open; Node HTTP fallback; PNG/WebP → MPEG-TS unwrap
 - **`/remux/`:** optional ffmpeg AAC-LC path; the feed writes `/proxy/` only
 - **Env:** `PROXY_HOST`, `PROXY_DEBUG`, `PROXY_BROWSER_IDLE_MS` (default 10 min)

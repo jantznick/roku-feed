@@ -10,6 +10,7 @@ import {
 } from '../src/proxy-payload.js';
 import { fetchViaBrowser } from './browser-fetch.js';
 import { fetchViaHttp } from './http-fetch.js';
+import { DADDY_REFERER, fetchDaddyPlaylist, isDaddyPlaylistUrl } from './daddy-playlist.js';
 import {
     clearResolvedStream,
     getCachedStream,
@@ -27,7 +28,7 @@ const port = process.env.PORT || 8787;
 const proxyHost = process.env.PROXY_HOST || '192.168.1.50:8787';
 const debug = process.env.PROXY_DEBUG === 'true';
 
-const PROXY_VERSION = 'embed-first-v43-player-frame';
+const PROXY_VERSION = 'v44-daddy-sealed-playlist';
 
 function isLoopbackClient(req) {
     const ip = String(req.ip || req.socket?.remoteAddress || '');
@@ -254,8 +255,128 @@ function unwrapWebpTsSegment(body) {
     return Buffer.alloc(0);
 }
 
-/** PNG GOAT first (Streamed/Daddy), then WebP-TS (TimStreams); otherwise passthrough. */
+const TIKTIK_PIXELS = Buffer.from('TIKTIKPX');
+const TIKTIK_RAW = Buffer.from('TIKTIKRAW');
+const TIKTIK_GZIP = Buffer.from('TIKTIKTSGZ');
+
+/** Decoded RGB bytes of an 8-bit, non-interlaced RGB/RGBA PNG (alpha dropped). */
+function decodePngRgb(body) {
+    let offset = 8;
+    let width = 0;
+    let height = 0;
+    let channels = 0;
+    const idatParts = [];
+    while (offset + 8 <= body.length) {
+        const length = body.readUInt32BE(offset);
+        const type = body.toString('ascii', offset + 4, offset + 8);
+        const data = body.subarray(offset + 8, offset + 8 + length);
+        if (type === 'IHDR') {
+            const [depth, color, , , interlace] = data.subarray(8, 13);
+            if (depth !== 8 || interlace !== 0 || (color !== 2 && color !== 6)) {
+                return null;
+            }
+            width = data.readUInt32BE(0);
+            height = data.readUInt32BE(4);
+            channels = color === 6 ? 4 : 3;
+        } else if (type === 'IDAT') {
+            idatParts.push(data);
+        } else if (type === 'IEND') {
+            break;
+        }
+        offset += 12 + length;
+    }
+    if (!width || !height || idatParts.length === 0) {
+        return null;
+    }
+
+    const raw = zlib.inflateSync(Buffer.concat(idatParts));
+    const stride = width * channels;
+    if (raw.length < height * (stride + 1)) {
+        return null;
+    }
+    const rgb = Buffer.alloc(width * height * 3);
+    let prev = Buffer.alloc(stride);
+    let out = 0;
+    for (let y = 0; y < height; y++) {
+        const rowStart = y * (stride + 1);
+        const filter = raw[rowStart];
+        const row = Buffer.from(raw.subarray(rowStart + 1, rowStart + 1 + stride));
+        for (let i = 0; i < stride; i++) {
+            const left = i >= channels ? row[i - channels] : 0;
+            const up = prev[i];
+            const upLeft = i >= channels ? prev[i - channels] : 0;
+            if (filter === 1) {
+                row[i] += left;
+            } else if (filter === 2) {
+                row[i] += up;
+            } else if (filter === 3) {
+                row[i] += (left + up) >> 1;
+            } else if (filter === 4) {
+                const p = left + up - upLeft;
+                const pa = Math.abs(p - left);
+                const pb = Math.abs(p - up);
+                const pc = Math.abs(p - upLeft);
+                row[i] += pa <= pb && pa <= pc ? left : pb <= pc ? up : upLeft;
+            } else if (filter !== 0) {
+                return null;
+            }
+        }
+        if (channels === 3) {
+            row.copy(rgb, out);
+            out += stride;
+        } else {
+            for (let i = 0; i < stride; i += 4) {
+                rgb[out++] = row[i];
+                rgb[out++] = row[i + 1];
+                rgb[out++] = row[i + 2];
+            }
+        }
+        prev = row;
+    }
+    return rgb;
+}
+
+/**
+ * Daddy (dembed.st player) wrappers: PNG pixels = "TIKTIKPX" + u32 length + gzip(TS),
+ * or "TIKTIKRAW" + TS / "TIKTIKTSGZ" + gzip(TS) markers inside the file.
+ * @returns {Buffer|null}
+ */
+function unwrapTikTikSegment(body) {
+    try {
+        if (body.subarray(0, 8).equals(PNG_SIGNATURE)) {
+            const rgb = decodePngRgb(body);
+            if (rgb && rgb.length >= 12 && rgb.subarray(0, 8).equals(TIKTIK_PIXELS)) {
+                const length = rgb.readUInt32BE(8);
+                const ts = zlib.gunzipSync(rgb.subarray(12, 12 + length));
+                if (ts[0] === MPEG_TS_SYNC) {
+                    console.log(`  - Unwrapped TIKTIKPX PNG: ${body.length} -> ${ts.length} bytes`);
+                    return ts;
+                }
+            }
+            return null;
+        }
+        const rawAt = body.indexOf(TIKTIK_RAW);
+        if (rawAt !== -1 && body[rawAt + TIKTIK_RAW.length] === MPEG_TS_SYNC) {
+            return body.subarray(rawAt + TIKTIK_RAW.length);
+        }
+        const gzAt = body.indexOf(TIKTIK_GZIP);
+        if (gzAt !== -1) {
+            return zlib.gunzipSync(body.subarray(gzAt + TIKTIK_GZIP.length));
+        }
+    } catch (error) {
+        console.log(`  - TIKTIK unwrap failed: ${error.message}`);
+    }
+    return null;
+}
+
+/** Daddy TIKTIK first, then PNG GOAT (Streamed), then WebP-TS (TimStreams); otherwise passthrough. */
 function unwrapDisguisedSegment(body) {
+    if (Buffer.isBuffer(body) && body.length >= 16) {
+        const tiktik = unwrapTikTikSegment(body);
+        if (tiktik?.length) {
+            return tiktik;
+        }
+    }
     const afterPng = unwrapGoatSegment(body);
     if (afterPng !== body) {
         return afterPng;
@@ -300,7 +421,8 @@ console.log(`Starting ADVANCED HLS proxy (${PROXY_VERSION})...`);
 console.log(`  - Chromium mode: ${process.env.PROXY_HEADLESS === 'true' ? 'headless' : 'visible (set PROXY_HEADLESS=true for headless)'}`);
 console.log(`  - Rewriting segment URLs to host: ${proxyHost}`);
 console.log('  - /proxy d=1: HTTP immediately (TimStreams); Puppeteer only after 403/410');
-console.log('  - /proxy else: embed-first; sniff player segments (Daddy)');
+console.log('  - Daddy wedd48c: HTTP token + decrypted playlist, TIKTIK PNG unwrap (no browser)');
+console.log('  - /proxy else: embed-first (Streamed / India)');
 console.log('  - /remux/{payload}: optional ffmpeg AAC-LC (feed uses /proxy)');
 
 app.get('/', (req, res) => {
@@ -632,6 +754,70 @@ async function resolvePlaybackContext(
     };
 }
 
+/** Feed URL or live embed resolve, with one forced re-resolve on a dead manifest. */
+async function fetchViaPlaybackContext(
+    { streamUrl, referer, extraHeaders, embedUrl, directOk },
+    isManifestRequest
+) {
+    let response;
+    let mode;
+    let ctx = await resolvePlaybackContext(
+        embedUrl,
+        streamUrl,
+        referer,
+        extraHeaders,
+        directOk,
+        { isManifest: isManifestRequest }
+    );
+
+    if (ctx.resolvedFromEmbed) {
+        console.log(`  - Ignoring feed m3u8; using fresh resolve: ${ctx.upstreamUrl}`);
+    }
+
+    ({ response, mode } = await fetchUpstream(
+        ctx.upstreamUrl,
+        {
+            embedUrl,
+            referer: ctx.referer,
+            extraHeaders: ctx.extraHeaders,
+            directOk: ctx.directOk,
+            skipChromiumFallback: ctx.skipChromiumFallback,
+        },
+        isManifestRequest
+    ));
+
+    if (response.statusCode >= 300 && isManifestRequest && embedUrl) {
+        console.log(
+            `  - Manifest fetch failed (${response.statusCode}), ` +
+                'awaiting fresh embed resolve...'
+        );
+        clearResolvedStream(embedUrl);
+        ctx = await resolvePlaybackContext(
+            embedUrl,
+            streamUrl,
+            referer,
+            extraHeaders,
+            directOk,
+            { isManifest: true, forceEmbed: true }
+        );
+        if (ctx.resolvedFromEmbed) {
+            console.log(`  - Fresh embed m3u8: ${ctx.upstreamUrl.slice(0, 100)}...`);
+        }
+        ({ response, mode } = await fetchUpstream(
+            ctx.upstreamUrl,
+            {
+                embedUrl,
+                referer: ctx.referer,
+                extraHeaders: ctx.extraHeaders,
+                directOk: ctx.directOk,
+                skipChromiumFallback: ctx.skipChromiumFallback,
+            },
+            isManifestRequest
+        ));
+    }
+    return { ctx, response, mode };
+}
+
 // Format: /proxy/{BASE64_JSON_PAYLOAD} where payload is { u, r, h?, e?, d? }
 // Use a named wildcard so standard base64 `/` inside the payload is not truncated
 // by Express's single-segment `:param` matcher (TimStreams TikTok segment rewrites).
@@ -657,60 +843,35 @@ app.get('/proxy/*b64Payload', async (req, res) => {
     }
 
     try {
-        let ctx = await resolvePlaybackContext(
-            embedUrl,
-            streamUrl,
-            referer,
-            extraHeaders,
-            directOk,
-            { isManifest: isManifestRequest }
-        );
-
-        if (ctx.resolvedFromEmbed) {
-            console.log(`  - Ignoring feed m3u8; using fresh resolve: ${ctx.upstreamUrl}`);
-        }
-
+        let ctx;
         let response;
         let mode;
+        // Embed URL carried into rewritten segment payloads. Daddy segments are
+        // plain TikTok-CDN fetches, so they skip the embed tab entirely.
+        let payloadEmbedUrl = embedUrl;
 
-        ({ response, mode } = await fetchUpstream(
-            ctx.upstreamUrl,
-            {
-                embedUrl,
-                referer: ctx.referer,
-                extraHeaders: ctx.extraHeaders,
-                directOk: ctx.directOk,
-                skipChromiumFallback: ctx.skipChromiumFallback,
-            },
-            isManifestRequest
-        ));
-
-        if (response.statusCode >= 300 && isManifestRequest && embedUrl) {
-            console.log(
-                `  - Manifest fetch failed (${response.statusCode}), ` +
-                    'awaiting fresh embed resolve...'
-            );
-            clearResolvedStream(embedUrl);
-            ctx = await resolvePlaybackContext(
-                embedUrl,
-                streamUrl,
-                referer,
-                extraHeaders,
-                directOk,
-                { isManifest: true, forceEmbed: true }
-            );
-            if (ctx.resolvedFromEmbed) {
-                console.log(`  - Fresh embed m3u8: ${ctx.upstreamUrl.slice(0, 100)}...`);
+        if (isManifestRequest && isDaddyPlaylistUrl(streamUrl)) {
+            try {
+                const body = await fetchDaddyPlaylist(streamUrl);
+                console.log('  - Fetch mode: Daddy sealed playlist (HTTP token + decrypt)');
+                ctx = {
+                    upstreamUrl: streamUrl,
+                    referer: DADDY_REFERER,
+                    extraHeaders: {},
+                    directOk: true,
+                    manifestBaseUrl: streamUrl,
+                };
+                response = { statusCode: 200, headers: {}, body };
+                mode = 'daddy-http';
+                payloadEmbedUrl = null;
+            } catch (error) {
+                console.log(`  - Daddy HTTP playlist failed (${error.message}); using embed`);
             }
-            ({ response, mode } = await fetchUpstream(
-                ctx.upstreamUrl,
-                {
-                    embedUrl,
-                    referer: ctx.referer,
-                    extraHeaders: ctx.extraHeaders,
-                    directOk: ctx.directOk,
-                    skipChromiumFallback: ctx.skipChromiumFallback,
-                },
+        }
+
+        if (!response) {
+            ({ ctx, response, mode } = await fetchViaPlaybackContext(
+                { streamUrl, referer, extraHeaders, embedUrl, directOk },
                 isManifestRequest
             ));
         }
@@ -760,12 +921,12 @@ app.get('/proxy/*b64Payload', async (req, res) => {
             //   open tab (and resolve cache) already carry them. Daddy was
             //   baking ~555B cookies into every segment URL (~1KB paths) and
             //   clients fetched the playlist but never requested segments.
-            const rewriteHeaders = (loopback || embedUrl) ? {} : ctx.extraHeaders;
+            const rewriteHeaders = (loopback || payloadEmbedUrl) ? {} : ctx.extraHeaders;
             const mediaSuffix = loopback ? '.ts' : '';
             console.log(
                 `  - Rewriting manifest segment URLs through /proxy (${segmentHost}`
                 + `${loopback ? ', remux-loopback+ts' : ''}`
-                + `${embedUrl && !loopback ? ', slim-no-headers' : ''})...`
+                + `${payloadEmbedUrl && !loopback ? ', slim-no-headers' : ''})...`
             );
 
             // Prefer the live capture URL (Daddy ?t= tokens) as rewrite base so
@@ -793,7 +954,7 @@ app.get('/proxy/*b64Payload', async (req, res) => {
                             fullKeyUrl,
                             ctx.referer,
                             rewriteHeaders,
-                            embedUrl,
+                            payloadEmbedUrl,
                             ctx.directOk
                         )}${mediaSuffix}`;
                         rewrittenLines.push(line.replace(uriMatch[1], proxiedKeyUrl));
@@ -812,7 +973,7 @@ app.get('/proxy/*b64Payload', async (req, res) => {
                         segmentUrl,
                         ctx.referer,
                         rewriteHeaders,
-                        embedUrl,
+                        payloadEmbedUrl,
                         ctx.directOk
                     )}${mediaSuffix}`);
                     segmentCount++;
