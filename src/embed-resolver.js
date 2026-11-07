@@ -334,6 +334,11 @@ export async function resolveStreamFromEmbed(browser, embedUrl, options = {}) {
                 'Accept-Language': 'en-US,en;q=0.9',
                 Referer: 'https://tim-streams.com/',
             });
+        } else if (/taifood-blog/i.test(embedUrl)) {
+            await page.setExtraHTTPHeaders({
+                'Accept-Language': 'en-US,en;q=0.9',
+                Referer: 'https://ppv.st/',
+            });
         } else {
             try {
                 await page.setExtraHTTPHeaders({
@@ -452,6 +457,26 @@ export async function resolveStreamFromEmbed(browser, embedUrl, options = {}) {
                 break;
             }
             await new Promise((resolve) => setTimeout(resolve, 400));
+        }
+
+        // taifood / matchora: player often starts after the click loop; block on
+        // one network m3u8 before giving up (0 candidates was common in headless).
+        if (candidates.length === 0 && !timStreams) {
+            log('-- No candidates yet; waiting for late m3u8 network response…');
+            try {
+                const lateRes = await page.waitForResponse(
+                    (res) => isManifestCandidate(res.url(), res.headers()['content-type'] || ''),
+                    { timeout: 15000 }
+                );
+                pushCandidate(
+                    lateRes.url(),
+                    lateRes.status(),
+                    lateRes.request().headers(),
+                    lateRes.request().headers().referer
+                );
+            } catch {
+                log('-- Late m3u8 wait timed out');
+            }
         }
 
         page.off('request', requestListener);

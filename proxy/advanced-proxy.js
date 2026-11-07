@@ -2,6 +2,7 @@ import express from 'express';
 import fs from 'fs';
 import http from 'http';
 import path from 'path';
+import zlib from 'zlib';
 import {
     decodeProxyPayload,
     encodeProxyPayload,
@@ -26,7 +27,7 @@ const port = process.env.PORT || 8787;
 const proxyHost = process.env.PROXY_HOST || '192.168.1.50:8787';
 const debug = process.env.PROXY_DEBUG === 'true';
 
-const PROXY_VERSION = 'embed-first-v32-embed-first-always';
+const PROXY_VERSION = 'embed-first-v33-idat-unwrap';
 
 function isLoopbackClient(req) {
     const ip = String(req.ip || req.socket?.remoteAddress || '');
@@ -136,6 +137,43 @@ function findMpegTsPayload(body, { minPackets = 6, searchLimit = Infinity } = {}
     );
 }
 
+/** Concatenate PNG IDAT chunk payloads and inflate — Daddy/tiktokx may hide TS there. */
+function inflatePngIdat(body) {
+    if (!Buffer.isBuffer(body) || body.length < 24 || !body.subarray(0, 8).equals(PNG_SIGNATURE)) {
+        return null;
+    }
+    const idatParts = [];
+    let offset = 8;
+    while (offset + 8 <= body.length) {
+        const length = body.readUInt32BE(offset);
+        const type = body.subarray(offset + 4, offset + 8).toString('ascii');
+        const dataStart = offset + 8;
+        const dataEnd = dataStart + length;
+        if (dataEnd + 4 > body.length) {
+            break;
+        }
+        if (type === 'IDAT') {
+            idatParts.push(body.subarray(dataStart, dataEnd));
+        }
+        if (type === 'IEND') {
+            break;
+        }
+        offset = dataEnd + 4; // skip CRC
+    }
+    if (idatParts.length === 0) {
+        return null;
+    }
+    try {
+        return zlib.inflateSync(Buffer.concat(idatParts));
+    } catch {
+        try {
+            return zlib.inflateRawSync(Buffer.concat(idatParts));
+        } catch {
+            return null;
+        }
+    }
+}
+
 function unwrapGoatSegment(body) {
     if (!Buffer.isBuffer(body) || body.length < 8) {
         return body;
@@ -160,13 +198,25 @@ function unwrapGoatSegment(body) {
         }
     }
 
-    // Newer tiktokx / Daddy: complete PNG with TS embedded; after-IEND is empty.
+    // Raw scan (TS appended/embedded uncompressed).
     const scanned = findMpegTsPayload(body, { minPackets: 6 });
     if (scanned) {
         console.log(
             `  - Unwrapped GOAT PNG via TS sync scan: ${body.length} -> ${scanned.length} bytes`
         );
         return scanned;
+    }
+
+    // Daddy tiktokx: full PNG with MPEG-TS inside zlib-compressed IDAT.
+    const inflated = inflatePngIdat(body);
+    if (inflated) {
+        const fromIdat = findMpegTsPayload(inflated, { minPackets: 6 });
+        if (fromIdat) {
+            console.log(
+                `  - Unwrapped GOAT PNG via inflated IDAT: ${body.length} -> ${fromIdat.length} bytes`
+            );
+            return fromIdat;
+        }
     }
 
     console.log(
@@ -314,7 +364,11 @@ function buildRewrittenPayload(url, referer, extraHeaders, embedUrl, directOk) {
     return encodeProxyPayload(url, referer, extraHeaders, embedUrl, directOk);
 }
 
-async function fetchUpstream(streamUrl, { embedUrl, referer, extraHeaders, directOk }, isManifestRequest) {
+async function fetchUpstream(
+    streamUrl,
+    { embedUrl, referer, extraHeaders, directOk, skipChromiumFallback = false },
+    isManifestRequest
+) {
     const browserOptions = { embedUrl, referer, extraHeaders };
 
     // GOAT TikTok .image segments: skip doomed Node fetch when we have an embed tab.
@@ -358,22 +412,24 @@ async function fetchUpstream(streamUrl, { embedUrl, referer, extraHeaders, direc
             return { response: httpResponse, mode: 'http' };
         }
 
-        // Expired signed manifests (410/404): Chromium page.goto of the same URL
+        // Dead signed manifests (410/404/403): Chromium page.goto of the same URL
         // is useless and thrashs the shared browser while other plays resolve.
         // Return the HTTP failure so the caller can forceEmbed-resolve instead.
         if (
             isManifestRequest &&
             httpResponse &&
-            (httpResponse.statusCode === 410 || httpResponse.statusCode === 404)
+            (httpResponse.statusCode === 410
+                || httpResponse.statusCode === 404
+                || httpResponse.statusCode === 403)
         ) {
             console.log(
-                `  - Direct HTTP ${httpResponse.statusCode} (expired signed URL); ` +
+                `  - Direct HTTP ${httpResponse.statusCode} (dead signed URL); ` +
                     'skipping Chromium of the same URL'
             );
             return { response: httpResponse, mode: 'http' };
         }
 
-        if (embedUrl) {
+        if (embedUrl && !skipChromiumFallback) {
             const reason = httpError
                 ? `threw (${httpError.message})`
                 : `status ${httpResponse.statusCode}`;
@@ -387,6 +443,10 @@ async function fetchUpstream(streamUrl, { embedUrl, referer, extraHeaders, direc
                 isManifestRequest
             );
             return { response: browserResponse, mode: 'chromium' };
+        }
+
+        if (skipChromiumFallback) {
+            console.log('  - Skipping Chromium fallback (embed resolve already failed)');
         }
 
         if (httpError) {
@@ -433,7 +493,7 @@ async function resolvePlaybackContext(
                 stream = await getResolvedStream(embedUrl, { force: forceEmbed });
             } catch (err) {
                 console.error(
-                    `  - Embed resolve failed (${err.message}); falling back to feed URL`
+                    `  - Embed resolve failed (${err.message}); feed URL HTTP only`
                 );
                 return {
                     upstreamUrl: streamUrl,
@@ -442,6 +502,7 @@ async function resolvePlaybackContext(
                     directOk: true,
                     manifestBaseUrl: streamUrl,
                     resolvedFromEmbed: false,
+                    skipChromiumFallback: true,
                 };
             }
         }
@@ -457,18 +518,18 @@ async function resolvePlaybackContext(
         };
     }
 
-    // Streamed embeds: keep the player open/resolved (referer + headers and live
-    // manifest capture). Rebase feed URLs onto the live CDN token from resolve —
-    // otherwise we either serve the captured master for every mono.m3u8 (nested
-    // /high/high/ rewrite) or 403 on the stale feed path.
+    // Streamed / Daddy / India embeds: keep the player open/resolved. Always
+    // honor forceEmbed after a dead feed URL — previously only TimStreams did.
     let stream = getCachedStream(embedUrl);
-    if (!stream) {
+    if (!stream || forceEmbed) {
         try {
-            stream = await getResolvedStream(embedUrl);
+            stream = await getResolvedStream(embedUrl, { force: forceEmbed });
         } catch (err) {
             console.error(
-                `  - Embed resolve failed (${err.message}); using feed URL via HTTP`
+                `  - Embed resolve failed (${err.message}); feed URL HTTP only (no Chromium thrash)`
             );
+            // directOk true + dead URL used to Chromium-navigate the 403 m3u8 and
+            // starve other plays. HTTP-only fallback; caller returns upstream error.
             return {
                 upstreamUrl: streamUrl,
                 referer: feedReferer,
@@ -476,6 +537,7 @@ async function resolvePlaybackContext(
                 directOk: true,
                 manifestBaseUrl: streamUrl,
                 resolvedFromEmbed: false,
+                skipChromiumFallback: true,
             };
         }
     }
@@ -578,6 +640,7 @@ app.get('/proxy/*b64Payload', async (req, res) => {
                 referer: ctx.referer,
                 extraHeaders: ctx.extraHeaders,
                 directOk: ctx.directOk,
+                skipChromiumFallback: ctx.skipChromiumFallback,
             },
             isManifestRequest
         ));
@@ -606,6 +669,7 @@ app.get('/proxy/*b64Payload', async (req, res) => {
                     referer: ctx.referer,
                     extraHeaders: ctx.extraHeaders,
                     directOk: ctx.directOk,
+                    skipChromiumFallback: ctx.skipChromiumFallback,
                 },
                 isManifestRequest
             ));
