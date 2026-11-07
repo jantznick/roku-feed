@@ -540,26 +540,14 @@ export async function fetchViaBrowser(url, { embedUrl, referer, extraHeaders = {
     }
 
     if (!isText) {
-        const direct = await tryDirectSegmentFetch(url, referer, extraHeaders);
-        if (direct && !direct.failedStatus) {
-            return direct;
-        }
-        // Daddy (and similar): expired playlist tokens → segment 404. Drop the
-        // frozen capture so the next manifest poll waits for a fresh player body
-        // instead of rewriting the same dead segment paths again.
-        if (direct?.failedStatus === 404 && embedAlive) {
-            if (invalidateManifestForMedia(embedPage, url)) {
-                logStep('Invalidated stale embed playlist after segment 404');
-            }
-        }
-        logStep('Direct segment fetch failed; trying embed-page browser fetch');
-
-        // Prefer the already-open embed player tab (correct Origin + cookies).
+        // Embed tab first when we have one — Daddy/wedd48c and Streamed GOAT need
+        // the player Origin/cookies. A bare Node GET usually 404/403 and only
+        // delayed the real fetch (and used to thrash logs before playlist freshness).
         if (embedAlive) {
             try {
                 return await fetchSegmentFromBrowserPage(embedPage, url, `embed:${embedUrl}`);
             } catch (embedError) {
-                logStep(`Embed-page segment fetch failed (${embedError.message}); falling back to session tab`);
+                logStep(`Embed-page segment fetch failed (${embedError.message}); trying direct HTTP`);
                 if (/ERR_HTTP_RESPONSE_CODE_FAILURE|404|410|403/.test(embedError.message)) {
                     if (invalidateManifestForMedia(embedPage, url)) {
                         logStep('Invalidated stale embed playlist after browser segment failure');
@@ -567,6 +555,17 @@ export async function fetchViaBrowser(url, { embedUrl, referer, extraHeaders = {
                 }
             }
         }
+
+        const direct = await tryDirectSegmentFetch(url, referer, extraHeaders);
+        if (direct && !direct.failedStatus) {
+            return direct;
+        }
+        if (direct?.failedStatus === 404 && embedAlive) {
+            if (invalidateManifestForMedia(embedPage, url)) {
+                logStep('Invalidated stale embed playlist after segment 404');
+            }
+        }
+        logStep('Direct segment fetch failed; falling back to session tab');
     }
 
     const session = await getSession(embedUrl, referer, extraHeaders);

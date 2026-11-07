@@ -20,13 +20,6 @@ export function getCachedStream(embedUrl) {
 
 export { getEmbedPage } from './embed-pages.js';
 
-export function markCapturedManifestServed(embedUrl) {
-    const entry = resolvedByEmbed.get(embedUrl);
-    if (entry) {
-        entry.servedCapturedManifest = true;
-    }
-}
-
 export function clearResolvedStream(embedUrl) {
     clearEmbedPage(embedUrl);
     resolvedByEmbed.delete(embedUrl);
@@ -84,10 +77,7 @@ export async function getResolvedStream(embedUrl, { force = false } = {}) {
             setEmbedPage(embedUrl, result.embedPage);
         }
 
-        const entry = {
-            ...result,
-            servedCapturedManifest: false,
-        };
+        const entry = { ...result };
         delete entry.embedPage;
 
         resolvedByEmbed.set(embedUrl, entry);

@@ -27,7 +27,7 @@ const port = process.env.PORT || 8787;
 const proxyHost = process.env.PROXY_HOST || '192.168.1.50:8787';
 const debug = process.env.PROXY_DEBUG === 'true';
 
-const PROXY_VERSION = 'embed-first-v34-fresh-manifest';
+const PROXY_VERSION = 'embed-first-v35-roku-paths';
 
 function isLoopbackClient(req) {
     const ip = String(req.ip || req.socket?.remoteAddress || '');
@@ -298,9 +298,9 @@ function logManifestPreview(label, body) {
 console.log(`Starting ADVANCED HLS proxy (${PROXY_VERSION})...`);
 console.log(`  - Chromium mode: ${process.env.PROXY_HEADLESS === 'true' ? 'headless' : 'visible (set PROXY_HEADLESS=true for headless)'}`);
 console.log(`  - Rewriting segment URLs to host: ${proxyHost}`);
-console.log('  - /proxy d=1 (TimStreams): HTTP first, Chromium fallback for segments; WebP-TS unwrap');
-console.log('  - /proxy otherwise: Puppeteer embed-first (Streamed)');
-console.log('  - /remux/{payload}: ffmpeg video-copy + AAC-LC (Roku HE-AAC workaround)');
+console.log('  - /proxy d=1: HTTP first (TimStreams); Chromium fallback; WebP/PNG unwrap');
+console.log('  - /proxy else: embed-first Chromium (Streamed / Daddy); live playlist + unwrap');
+console.log('  - /remux/{payload}: optional ffmpeg AAC-LC (feed uses /proxy)');
 
 app.get('/', (req, res) => {
     res.send('Proxy server is running (embed-first stream resolve)');
@@ -479,15 +479,15 @@ async function resolvePlaybackContext(
         };
     }
 
-    // TimStreams (d=1): always resolve from the embed at play time. Feed tokens
-    // expire (410) and must not be the source of truth — the embed `e` field is.
+    // d=1 (TimStreams / some Streamed): always resolve from the embed at play
+    // time. Feed tokens expire (410); the embed `e` field is source of truth.
     if (feedDirectOk) {
         let stream = getCachedStream(embedUrl);
         if (!stream || forceEmbed) {
             console.log(
                 forceEmbed
-                    ? '  - TimStreams: re-resolving embed after failed manifest'
-                    : '  - TimStreams: awaiting embed for fresh signed m3u8'
+                    ? '  - d=1: re-resolving embed after failed manifest'
+                    : '  - d=1: awaiting embed for fresh signed m3u8'
             );
             try {
                 stream = await getResolvedStream(embedUrl, { force: forceEmbed });
@@ -691,7 +691,7 @@ app.get('/proxy/*b64Payload', async (req, res) => {
                 directOk &&
                 embedUrl
             ) {
-                console.log('  - Clearing TimStreams embed cache after segment 403');
+                console.log('  - Clearing d=1 embed cache after segment 403');
                 clearResolvedStream(embedUrl);
             }
             res.status(response.statusCode).send(`Upstream returned ${response.statusCode}`);
