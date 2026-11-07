@@ -34,9 +34,14 @@ function needsIframeParent(embedUrl) {
     return /embedsports\.|buffsports\./i.test(embedUrl);
 }
 
+/** TimStreams short links — JW player id is `player`; needs tim-streams.com Referer. */
+function isTimStreamsEmbed(embedUrl) {
+    return /ehgembxe\.cfd|grandemx\.|tim-streams\.com|timst\./i.test(String(embedUrl || ''));
+}
+
 /** Ad-heavy embed hosts rarely reach networkidle2 before the timeout. */
 function gotoWaitUntil(embedUrl) {
-    if (/embedsports\.|buffsports\.|matchora\.|sportplus\.|dami-tv\.|dervlin\.|taifood-blog\.|thedaddy\.|dembed\.st/i.test(embedUrl)) {
+    if (/embedsports\.|buffsports\.|matchora\.|sportplus\.|dami-tv\.|dervlin\.|taifood-blog\.|thedaddy\.|dembed\.st|ehgembxe\.cfd|grandemx\./i.test(embedUrl)) {
         return 'domcontentloaded';
     }
     return 'networkidle2';
@@ -44,9 +49,38 @@ function gotoWaitUntil(embedUrl) {
 
 function isManifestCandidate(url, contentType = '') {
     const ct = (contentType || '').toLowerCase();
+    if (!url) return false;
+    // JW player analytics, not media.
+    if (/jwpltx\.com|ping\.gif/i.test(url)) return false;
     if (url.includes('.m3u8') || url.includes('.mpd')) return true;
     if (ct.includes('mpegurl') || ct.includes('application/vnd.apple.mpegurl')) return true;
     return false;
+}
+
+/** Same wait the TimStreams scraper uses — JW playlist file before CDN fetch. */
+async function waitForTimStreamsJwFile(page, log) {
+    log('-- TimStreams: waiting for jwplayer("player") playlist…');
+    const fromPlayer = await page
+        .waitForFunction(() => {
+            try {
+                if (typeof jwplayer !== 'function') return null;
+                const player = jwplayer('player');
+                if (!player || typeof player.getPlaylist !== 'function') return null;
+                const playlist = player.getPlaylist();
+                const item = playlist?.[0];
+                return item?.file || item?.sources?.[0]?.file || null;
+            } catch {
+                return null;
+            }
+        }, { timeout: 20000 })
+        .then((handle) => handle.jsonValue())
+        .catch(() => null);
+    if (fromPlayer) {
+        log(`-- TimStreams: JW playlist file ${String(fromPlayer).slice(0, 100)}…`);
+    } else {
+        log('-- TimStreams: JW playlist wait timed out');
+    }
+    return fromPlayer;
 }
 
 async function userAgentForBrowser(browser) {
@@ -77,21 +111,36 @@ async function stripClickBlockers(page) {
     }
 }
 
-/** Pull HLS file from JW Player playlist APIs across frames (plytvme/dervlin, embed.st). */
+/** Pull HLS file from JW Player playlist APIs across frames (plytvme/dervlin, embed.st, TimStreams). */
 async function extractJwPlaylistFile(page) {
     for (const frame of page.frames()) {
         try {
             const file = await frame.evaluate(() => {
                 try {
                     if (typeof window.jwplayer !== 'function') return null;
-                    const player = window.jwplayer();
-                    try {
-                        player.play?.(true);
-                    } catch {
-                        // ignore
+                    // TimStreams ehgembxe uses jwplayer('player'); others use the default id.
+                    const candidates = [];
+                    for (const id of ['player', undefined]) {
+                        try {
+                            const player = id ? window.jwplayer(id) : window.jwplayer();
+                            if (player) candidates.push(player);
+                        } catch {
+                            // ignore missing id
+                        }
                     }
-                    const item = player.getPlaylistItem?.() || player.getPlaylist?.()?.[0];
-                    return item?.file || item?.sources?.[0]?.file || null;
+                    for (const player of candidates) {
+                        try {
+                            player.play?.(true);
+                        } catch {
+                            // ignore
+                        }
+                        const item = player.getPlaylistItem?.() || player.getPlaylist?.()?.[0];
+                        const file = item?.file || item?.sources?.[0]?.file || null;
+                        if (file && typeof file === 'string' && /^https?:\/\//i.test(file)) {
+                            return file;
+                        }
+                    }
+                    return null;
                 } catch {
                     return null;
                 }
@@ -277,8 +326,29 @@ export async function resolveStreamFromEmbed(browser, embedUrl, options = {}) {
         await page.setCacheEnabled(false);
         await page.setUserAgent(await userAgentForBrowser(browser));
 
-        if (captureManifestBody) {
+        const timStreams = isTimStreamsEmbed(embedUrl);
+        if (timStreams) {
+            // Scraper sets tim-streams.com Referer; without it ehgembxe often
+            // never boots JW and the proxy saw 0 m3u8 candidates.
+            await page.setExtraHTTPHeaders({
+                'Accept-Language': 'en-US,en;q=0.9',
+                Referer: 'https://tim-streams.com/',
+            });
+        } else {
+            try {
+                await page.setExtraHTTPHeaders({
+                    'Accept-Language': 'en-US,en;q=0.9',
+                    Referer: `${new URL(embedUrl).origin}/`,
+                });
+            } catch {
+                // malformed embed
+            }
+        }
+
+        if (captureManifestBody || timStreams) {
             attachAdWindowHandler(page, log);
+        }
+        if (captureManifestBody) {
             bodyCapture = await attachManifestCapture(page, log);
         }
 
@@ -286,7 +356,7 @@ export async function resolveStreamFromEmbed(browser, embedUrl, options = {}) {
         const candidates = [];
 
         const pushCandidate = (url, status, requestHeaders = {}, refererOverride = null) => {
-            if (!url) return;
+            if (!url || !isManifestCandidate(url)) return;
             const referer = pickReferer(embedUrl, refererOverride || requestHeaders.referer);
             const score = scoreManifestUrl(url);
             const info = {
@@ -301,6 +371,11 @@ export async function resolveStreamFromEmbed(browser, embedUrl, options = {}) {
             log(`[${status}] Stream manifest candidate: ${url}`);
         };
 
+        // Capture on request too — TimStreams scraper does this; response-only
+        // misses playlists that abort or 410 from datacenter while still useful.
+        const requestListener = (request) => {
+            pushCandidate(request.url(), 200, request.headers(), request.headers().referer);
+        };
         const responseListener = (response) => {
             const url = response.url();
             const contentType = response.headers()['content-type'] || '';
@@ -314,6 +389,7 @@ export async function resolveStreamFromEmbed(browser, embedUrl, options = {}) {
             pushCandidate(url, status, reqHeaders, reqHeaders.referer);
         };
 
+        page.on('request', requestListener);
         page.on('response', responseListener);
 
         const useIframeParent = needsIframeParent(embedUrl);
@@ -335,6 +411,13 @@ export async function resolveStreamFromEmbed(browser, embedUrl, options = {}) {
             return null;
         }
 
+        if (timStreams) {
+            const jwFile = await waitForTimStreamsJwFile(page, log);
+            if (jwFile) {
+                pushCandidate(jwFile, 200, {}, 'https://ehgembxe.cfd/');
+            }
+        }
+
         log('-- Player page loaded. Looking for play button...');
         const { clicked, jwFile } = await clickPlayButton(page, log);
         if (jwFile) {
@@ -353,8 +436,12 @@ export async function resolveStreamFromEmbed(browser, embedUrl, options = {}) {
             }
         }
 
-        const waitDeadline = Date.now() + 20000;
+        const waitDeadline = Date.now() + (timStreams ? 8000 : 20000);
         while (Date.now() < waitDeadline) {
+            // TimStreams: JW file is enough even when CDN returns 410 from this host.
+            if (timStreams && candidates.length > 0) {
+                break;
+            }
             if (candidates.some((candidate) => candidate.status === 200)) {
                 break;
             }
@@ -367,10 +454,17 @@ export async function resolveStreamFromEmbed(browser, embedUrl, options = {}) {
             await new Promise((resolve) => setTimeout(resolve, 400));
         }
 
+        page.off('request', requestListener);
         page.off('response', responseListener);
 
-        const best = pickBestCandidate(candidates);
-        if (!best || best.status !== 200) {
+        // TimStreams: prefer any captured signed URL even if the CDN 410'd from
+        // this host — the LAN proxy fetches it later with a home IP.
+        const best = timStreams
+            ? (pickBestCandidate(candidates.filter((c) => c.status === 200))
+                || pickBestCandidate(candidates)
+                || (candidates.length ? candidates.sort((a, b) => b.score - a.score)[0] : null))
+            : pickBestCandidate(candidates);
+        if (!best || (!timStreams && best.status !== 200)) {
             const dervlinError = await page.evaluate(() => {
                 for (const frame of [...document.querySelectorAll('iframe')]) {
                     // can't read cross-origin; just note presence

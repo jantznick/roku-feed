@@ -11,6 +11,9 @@ const resolvedByEmbed = new Map();
 /** @type {Map<string, Promise<object>>} */
 const resolveInFlight = new Map();
 
+/** Serialize embed resolves — concurrent Puppeteer navigations thrash headless and yield 0 candidates. */
+let resolveQueue = Promise.resolve();
+
 export function getCachedStream(embedUrl) {
     return resolvedByEmbed.get(embedUrl) || null;
 }
@@ -53,9 +56,14 @@ export async function getResolvedStream(embedUrl, { force = false } = {}) {
         return resolveInFlight.get(embedUrl);
     }
 
-    const task = (async () => {
+    const run = async () => {
         if (force) {
             clearResolvedStream(embedUrl);
+        }
+
+        // Re-check cache after waiting in the global queue.
+        if (!force && resolvedByEmbed.has(embedUrl)) {
+            return resolvedByEmbed.get(embedUrl);
         }
 
         console.log(`[stream-session] Opening embed in Puppeteer: ${embedUrl}`);
@@ -92,8 +100,11 @@ export async function getResolvedStream(embedUrl, { force = false } = {}) {
             console.log('[stream-session] Embed page kept open for manifest fetch');
         }
         return entry;
-    })();
+    };
 
+    const task = resolveQueue.then(run, run);
+    // Keep the queue moving even when this resolve fails.
+    resolveQueue = task.catch(() => {});
     resolveInFlight.set(embedUrl, task);
     try {
         return await task;
