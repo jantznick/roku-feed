@@ -6,6 +6,7 @@ import path from 'path';
 import { scrapeMainPage, deepScrapeGames } from './scraper.js';
 import { scrapeStreamedGames, scrape247Channels } from './streamed-scraper.js';
 import { scrapeTimstChannels, TIMST_LOGO_LEAGUES } from './timst-scraper.js';
+import { scrapeDaddyChannels } from './daddy-scraper.js';
 import { getPreviousFeed, compareGames, indexFeedItemsById } from './state-manager.js';
 import { generateImages } from './image-generator.js';
 import { downloadPosters } from './poster-downloader.js';
@@ -111,6 +112,7 @@ async function main() {
   console.log(`- SKIP PROXY: ${process.env.SKIP_PROXY === 'true' ? '✅ Direct stream URLs only' : '❌ Use proxy when Referer present'}`);
   console.log(`- SKIP ONHOCKEY: ${process.env.SKIP_ONHOCKEY === 'true' ? '✅ Skipping onhockey.tv' : '❌ Scraping onhockey.tv'}`);
   console.log(`- SKIP TIMST: ${process.env.SKIP_TIMST === 'true' ? '✅ Skipping TimStreams live-TV' : '❌ Scraping TimStreams → 24/7 / Entertainment / Movies / News / Cartoons'}`);
+  console.log(`- SKIP DADDY: ${process.env.SKIP_DADDY === 'true' ? '✅ Skipping DaddyLive 24/7 fill-in' : '❌ DaddyLive 24/7 fill-in (after TimStreams)'}`);
   const reuseTtlMs = getStreamReuseTtlMs();
   console.log(`- STREAM REUSE TTL: ${reuseTtlMs === 0 ? '❌ Disabled (always rescrape)' : `✅ ${Math.round(reuseTtlMs / 60000)} min`}`);
   console.log(`- EMBED CONCURRENCY: ${getEmbedConcurrency()}`);
@@ -176,10 +178,25 @@ async function main() {
       console.error(`TimStreams scrape failed (continuing): ${error.message}`);
     }
 
+    // DaddyLive last: skip names already present, only resolve extras / gaps.
+    let daddyChannels = [];
+    try {
+      const alreadyHave = [...onHockeyGames, ...streamedGames, ...channels247, ...timstChannels];
+      daddyChannels = await scrapeDaddyChannels(browser, alreadyHave, previousByIdForReuse);
+    } catch (error) {
+      console.error(`DaddyLive scrape failed (continuing): ${error.message}`);
+    }
+
     // Combine the games from all sources
-    const allCurrentGames = [...onHockeyGames, ...streamedGames, ...channels247, ...timstChannels];
+    const allCurrentGames = [
+      ...onHockeyGames,
+      ...streamedGames,
+      ...channels247,
+      ...timstChannels,
+      ...daddyChannels,
+    ];
     console.log(`\nFound ${onHockeyGames.length} games from onhockey.tv${skipOnHockey ? ' (skipped)' : ''} and ${streamedGames.length} games from ppv.st.`);
-    console.log(`Found ${channels247.length} ppv.st 24/7 channels and ${timstChannels.length} TimStreams channels.`);
+    console.log(`Found ${channels247.length} ppv.st 24/7, ${timstChannels.length} TimStreams, ${daddyChannels.length} DaddyLive fill-ins.`);
     console.log(`Total unique items to process: ${allCurrentGames.length}`);
 
     // Log any new soccer leagues discovered
@@ -225,17 +242,19 @@ async function main() {
     const streamedToProcess = gamesToProcess.filter(game => streamedGames.some(g => g.id === game.id));
     const channelsToProcess = gamesToProcess.filter(game => channels247.some(g => g.id === game.id));
     const timstToProcess = gamesToProcess.filter(game => timstChannels.some(g => g.id === game.id));
+    const daddyToProcess = gamesToProcess.filter(game => daddyChannels.some(g => g.id === game.id));
     
     const onHockeyWithStreams = skipOnHockey
         ? []
         : await deepScrapeGames(browser, onHockeyToProcess);
 
-    // Streamed / 24/7 / TimStreams already have streams; combine with onhockey deep-scrape results.
+    // Streamed / 24/7 / TimStreams / Daddy already have streams; combine with onhockey deep-scrape results.
     const allGamesToAddOrUpdate = [
         ...onHockeyWithStreams,
         ...streamedToProcess,
         ...channelsToProcess,
         ...timstToProcess,
+        ...daddyToProcess,
     ];
 
     // --- IMAGE HANDLING ---

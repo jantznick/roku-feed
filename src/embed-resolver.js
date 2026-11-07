@@ -36,7 +36,7 @@ function needsIframeParent(embedUrl) {
 
 /** Ad-heavy embed hosts rarely reach networkidle2 before the timeout. */
 function gotoWaitUntil(embedUrl) {
-    if (/embedsports\.|buffsports\.|matchora\.|sportplus\.|dami-tv\.|dervlin\.|taifood-blog\./i.test(embedUrl)) {
+    if (/embedsports\.|buffsports\.|matchora\.|sportplus\.|dami-tv\.|dervlin\.|taifood-blog\.|thedaddy\.|dembed\.st/i.test(embedUrl)) {
         return 'domcontentloaded';
     }
     return 'networkidle2';
