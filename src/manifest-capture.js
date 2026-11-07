@@ -11,6 +11,24 @@ function isManifestUrl(url) {
     return url.includes('.m3u8') || url.includes('.mpd');
 }
 
+/** Daddy tokenized paths + common HLS segment extensions (not playlists). */
+function isSegmentUrl(url) {
+    if (!url || isManifestUrl(url)) {
+        return false;
+    }
+    if (/\.(ts|m4s|mp4|aac)(\?|#|$)/i.test(url)) {
+        return true;
+    }
+    if (/tiktokcdn\.|ttam-origin\.image|\.image\?/i.test(url)) {
+        return true;
+    }
+    // Daddy / wedd48c: long token path under premium*/ with no extension
+    if (/wedd48c\.|dembed\./i.test(url) && /\/premium\d+\//i.test(url)) {
+        return !url.includes('.m3u8');
+    }
+    return false;
+}
+
 /** Path after the quality root (/1/high/mono.m3u8 → high/mono.m3u8). */
 function qualityPathSuffix(pathname) {
     const match = String(pathname || '').match(/\/\d+\/(.+)$/);
@@ -88,11 +106,40 @@ export async function attachManifestCapture(page, log = () => {}) {
      * @type {Map<string, { body: string, url: string, seq: number }>}
      */
     const byPath = new Map();
+    /** @type {Map<string, { body: Buffer, at: number }>} */
+    const segmentsByUrl = new Map();
     let captureSeq = 0;
 
     const onResponse = (response) => {
         const url = response.url();
-        if (!isManifestUrl(url) || response.status() !== 200) {
+        if (response.status() !== 200) {
+            return;
+        }
+
+        if (isSegmentUrl(url)) {
+            void (async () => {
+                try {
+                    const buf = await response.buffer();
+                    if (buf?.length > 500) {
+                        segmentsByUrl.set(url, { body: buf, at: Date.now() });
+                        // Bound memory — keep the newest ~40 segment payloads.
+                        if (segmentsByUrl.size > 40) {
+                            const oldest = [...segmentsByUrl.entries()]
+                                .sort((a, b) => a[1].at - b[1].at)
+                                .slice(0, segmentsByUrl.size - 40);
+                            for (const [key] of oldest) {
+                                segmentsByUrl.delete(key);
+                            }
+                        }
+                    }
+                } catch {
+                    // Body already consumed or navigated away.
+                }
+            })();
+            return;
+        }
+
+        if (!isManifestUrl(url)) {
             return;
         }
 
@@ -173,6 +220,40 @@ export async function attachManifestCapture(page, log = () => {}) {
         /** Source URL of the latest capture (includes live query token when present). */
         getLatestSourceUrl(preferredUrl) {
             return this.getLatestEntry(preferredUrl)?.url || null;
+        },
+
+        /** Bytes the embed player already downloaded for this segment URL. */
+        getSegment(url) {
+            const hit = segmentsByUrl.get(url);
+            if (!hit) {
+                return null;
+            }
+            if (Date.now() - hit.at > 120000) {
+                segmentsByUrl.delete(url);
+                return null;
+            }
+            return hit.body;
+        },
+
+        /**
+         * Wait until MEDIA-SEQUENCE advances past minSeq (player sliding window).
+         * @param {string} url
+         * @param {number} minSeq
+         * @param {number} [timeoutMs]
+         */
+        async waitForNewerMediaSeq(url, minSeq, timeoutMs = 2500) {
+            const deadline = Date.now() + timeoutMs;
+            while (Date.now() < deadline) {
+                const entry = this.getLatestEntry(url);
+                if (entry) {
+                    const seq = Number(mediaSequenceOf(entry.body));
+                    if (Number.isFinite(seq) && seq > minSeq) {
+                        return entry;
+                    }
+                }
+                await sleep(150);
+            }
+            return this.getLatestEntry(url);
         },
 
         /**
@@ -343,6 +424,15 @@ export function getLatestManifestSourceUrl(page, preferredUrl = '') {
     return capture.getLatestSourceUrl?.(preferredUrl) || null;
 }
 
+/** @returns {{ body: string, url: string, seq: number } | null} */
+export function getLatestManifestEntry(page, preferredUrl = '') {
+    const capture = capturesByPage.get(page);
+    if (!capture || !preferredUrl) {
+        return null;
+    }
+    return capture.getLatestEntry?.(preferredUrl) || null;
+}
+
 /**
  * Drop cached playlists related to a failed segment so the next poll waits for a new capture.
  * @param {import('puppeteer').Page} page
@@ -354,6 +444,33 @@ export function invalidateManifestForMedia(page, mediaUrl) {
         return false;
     }
     return capture.invalidateForMediaUrl?.(mediaUrl) || false;
+}
+
+/**
+ * Segment bytes the embed player already fetched (Daddy CDP re-fetch often 404s).
+ * @param {import('puppeteer').Page} page
+ * @param {string} url
+ */
+export function getCapturedSegment(page, url) {
+    const capture = capturesByPage.get(page);
+    if (!capture || !url) {
+        return null;
+    }
+    return capture.getSegment?.(url) || null;
+}
+
+/**
+ * @param {import('puppeteer').Page} page
+ * @param {string} preferredUrl
+ * @param {number} minMediaSeq
+ * @param {number} [timeoutMs]
+ */
+export async function waitForNewerManifestEntry(page, preferredUrl, minMediaSeq, timeoutMs = 2500) {
+    const capture = capturesByPage.get(page);
+    if (!capture) {
+        return null;
+    }
+    return capture.waitForNewerMediaSeq?.(preferredUrl, minMediaSeq, timeoutMs) || null;
 }
 
 /**

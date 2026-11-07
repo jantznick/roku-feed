@@ -27,7 +27,7 @@ const port = process.env.PORT || 8787;
 const proxyHost = process.env.PROXY_HOST || '192.168.1.50:8787';
 const debug = process.env.PROXY_DEBUG === 'true';
 
-const PROXY_VERSION = 'embed-first-v38-daddy-live-refresh';
+const PROXY_VERSION = 'embed-first-v39-player-sniff';
 
 function isLoopbackClient(req) {
     const ip = String(req.ip || req.socket?.remoteAddress || '');
@@ -300,7 +300,7 @@ console.log(`Starting ADVANCED HLS proxy (${PROXY_VERSION})...`);
 console.log(`  - Chromium mode: ${process.env.PROXY_HEADLESS === 'true' ? 'headless' : 'visible (set PROXY_HEADLESS=true for headless)'}`);
 console.log(`  - Rewriting segment URLs to host: ${proxyHost}`);
 console.log('  - /proxy d=1: HTTP immediately (TimStreams); Puppeteer only after 403/410');
-console.log('  - /proxy else: embed-first + live playlist refresh (Streamed / Daddy)');
+console.log('  - /proxy else: embed-first; serve player captures (Streamed / Daddy)');
 console.log('  - /remux/{payload}: optional ffmpeg AAC-LC (feed uses /proxy)');
 
 app.get('/', (req, res) => {

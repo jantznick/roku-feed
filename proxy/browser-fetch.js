@@ -1,9 +1,12 @@
 import {
     fetchManifestOnPage,
+    getCapturedSegment,
     getLatestManifestBody,
+    getLatestManifestEntry,
     getLatestManifestSourceUrl,
     invalidateManifestForMedia,
     waitForLatestManifestBody,
+    waitForNewerManifestEntry,
 } from '../src/manifest-capture.js';
 import { launchBrowser as launchStealthBrowser, describePuppeteerMode } from '../src/puppeteer-config.js';
 import { BROWSER_USER_AGENT } from '../src/proxy-payload.js';
@@ -34,6 +37,8 @@ let idleTimer = null;
 
 /** @type {Map<string, BrowserSession>} */
 const sessions = new Map();
+/** @type {Map<string, number>} last MEDIA-SEQUENCE served per embed|path */
+const lastServedMediaSeq = new Map();
 
 function logStep(message) {
     console.log(`[browser-fetch] ${message}`);
@@ -228,63 +233,6 @@ async function fetchSegmentFromBrowserPage(page, url, lockKey = 'page') {
         } catch (inPageError) {
             logStep(`In-page segment fetch failed (${inPageError.message}); trying CDP`);
             return fetchSegmentViaCdp(page, url);
-        }
-    });
-}
-
-/**
- * Actively re-fetch a live playlist through the embed tab (Daddy ?t= tokens).
- * Returning a stale capture freezes MEDIA-SEQUENCE and every segment 404s.
- * @param {import('puppeteer').Page} page
- * @param {string} url
- * @param {string} [lockKey]
- */
-async function fetchManifestFromBrowserPage(page, url, lockKey = 'page') {
-    return withPageLock(lockKey, async () => {
-        logStep(`Refreshing live manifest via embed: ${url.slice(0, 100)}...`);
-        try {
-            const result = await page.evaluate(async (manifestUrl) => {
-                try {
-                    const response = await fetch(manifestUrl, {
-                        credentials: 'include',
-                        cache: 'no-store',
-                        redirect: 'follow',
-                    });
-                    if (!response.ok) {
-                        return { ok: false, status: response.status, error: `HTTP ${response.status}` };
-                    }
-                    return {
-                        ok: true,
-                        status: response.status,
-                        text: await response.text(),
-                        finalUrl: response.url || manifestUrl,
-                    };
-                } catch (error) {
-                    return { ok: false, status: 0, error: error?.message || String(error) };
-                }
-            }, url);
-            if (result?.ok && result.text?.includes('#EXTM3U')) {
-                return {
-                    statusCode: result.status,
-                    headers: { 'content-type': 'application/vnd.apple.mpegurl' },
-                    body: result.text,
-                    sourceUrl: result.finalUrl || url,
-                };
-            }
-            throw new Error(result?.error || 'in-page manifest refresh failed');
-        } catch (inPageError) {
-            logStep(`In-page manifest refresh failed (${inPageError.message}); trying CDP`);
-            const cdp = await fetchSegmentViaCdp(page, url);
-            const text = Buffer.isBuffer(cdp.body) ? cdp.body.toString('utf8') : String(cdp.body || '');
-            if (!text.includes('#EXTM3U')) {
-                throw new Error('CDP manifest refresh returned non-m3u8 body');
-            }
-            return {
-                statusCode: cdp.statusCode,
-                headers: { 'content-type': 'application/vnd.apple.mpegurl' },
-                body: text,
-                sourceUrl: url,
-            };
         }
     });
 }
@@ -584,52 +532,45 @@ export async function fetchViaBrowser(url, { embedUrl, referer, extraHeaders = {
     }
 
     if (isText && embedAlive) {
-        // Always re-fetch the live playlist through the embed tab. Serving the
-        // resolve-time capture freezes MEDIA-SEQUENCE (Daddy wedd48c) and every
-        // tokenized segment 404s — switching channels made this obvious.
-        const liveUrl = getLatestManifestSourceUrl(embedPage, url) || url;
-        try {
-            const refreshed = await fetchManifestFromBrowserPage(
-                embedPage,
-                liveUrl,
-                `embed-m3u8:${embedUrl}`
+        // Trust the player's own playlist downloads (they keep advancing). Do NOT
+        // CDP re-fetch index.m3u8?t=… — that 404s and we used to kill the tab with
+        // a fake 410 while captures n=2,3,4 were still landing fine.
+        let entry = getLatestManifestEntry(embedPage, url);
+        if (!entry) {
+            await waitForLatestManifestBody(embedPage, url, 2500);
+            entry = getLatestManifestEntry(embedPage, url);
+        }
+        if (entry?.body) {
+            const serveKey = `${embedUrl}|${url.split('?')[0]}`;
+            const lastSeq = lastServedMediaSeq.get(serveKey) || 0;
+            let mediaSeq = Number(
+                (entry.body.match(/#EXT-X-MEDIA-SEQUENCE:(\d+)/) || [])[1] || 0
             );
-            if (refreshed?.body?.includes('#EXTM3U')) {
-                const seq = (refreshed.body.match(/#EXT-X-MEDIA-SEQUENCE:(\d+)/) || [])[1] || '?';
-                logStep(
-                    `Serving refreshed embed manifest (${refreshed.body.length} chars, seq=${seq})`
+            if (mediaSeq > 0 && mediaSeq <= lastSeq) {
+                const newer = await waitForNewerManifestEntry(
+                    embedPage,
+                    url,
+                    mediaSeq,
+                    2500
                 );
-                return refreshed;
+                if (newer?.body) {
+                    entry = newer;
+                    mediaSeq = Number(
+                        (entry.body.match(/#EXT-X-MEDIA-SEQUENCE:(\d+)/) || [])[1] || mediaSeq
+                    );
+                }
             }
-        } catch (refreshError) {
-            logStep(`Embed manifest refresh failed (${refreshError.message})`);
-            // A dead ?t= token must not fall back to a frozen capture — that is
-            // exactly how MEDIA-SEQUENCE stuck and every segment 404'd.
-            if (/404|410|403|ERR_HTTP_RESPONSE_CODE/.test(refreshError.message)) {
-                logStep('Live playlist token dead; signaling embed re-resolve');
-                return {
-                    statusCode: 410,
-                    headers: { 'content-type': 'application/vnd.apple.mpegurl' },
-                    body: '',
-                };
+            if (mediaSeq > 0) {
+                lastServedMediaSeq.set(serveKey, mediaSeq);
             }
-            logStep('Using last capture as soft fallback');
-        }
-
-        let body = getLatestManifestBody(embedPage, url);
-        if (!body) {
-            body = await waitForLatestManifestBody(embedPage, url, 2500);
-        }
-        if (body) {
-            const seq = (body.match(/#EXT-X-MEDIA-SEQUENCE:(\d+)/) || [])[1] || '?';
-            const sourceUrl = getLatestManifestSourceUrl(embedPage, url) || url;
+            const sourceUrl = entry.url || getLatestManifestSourceUrl(embedPage, url) || url;
             logStep(
-                `Serving cached embed manifest (${body.length} chars, seq=${seq})`
+                `Serving player-captured manifest (${entry.body.length} chars, seq=${mediaSeq || '?'})`
             );
             return {
                 statusCode: 200,
                 headers: { 'content-type': 'application/vnd.apple.mpegurl' },
-                body,
+                body: entry.body,
                 sourceUrl,
             };
         }
@@ -639,10 +580,17 @@ export async function fetchViaBrowser(url, { embedUrl, referer, extraHeaders = {
     }
 
     if (!isText) {
-        // Embed tab first when we have one — Daddy/wedd48c and Streamed GOAT need
-        // the player Origin/cookies. A bare Node GET usually 404/403 and only
-        // delayed the real fetch (and used to thrash logs before playlist freshness).
+        // Prefer bytes the embed player already downloaded — Daddy CDP re-GETs 404.
         if (embedAlive) {
+            const sniffer = getCapturedSegment(embedPage, url);
+            if (sniffer?.length) {
+                logStep(`Serving player-sniffed segment (${sniffer.length} bytes)`);
+                return {
+                    statusCode: 200,
+                    headers: { 'content-type': 'video/MP2T' },
+                    body: sniffer,
+                };
+            }
             try {
                 return await fetchSegmentFromBrowserPage(embedPage, url, `embed:${embedUrl}`);
             } catch (embedError) {
