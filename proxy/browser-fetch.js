@@ -1,7 +1,6 @@
 import {
     fetchManifestOnPage,
     getCapturedSegment,
-    getLatestManifestBody,
     getLatestManifestEntry,
     getLatestManifestSourceUrl,
     invalidateManifestForMedia,
