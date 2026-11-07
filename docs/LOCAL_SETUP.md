@@ -115,6 +115,7 @@ On startup the scraper **downloads the previous feed from B2** (when configured)
 ### Sports scope
 
 - **onhockey.tv:** NHL, NHL Rookie Camp, NCAA D1 Men, AHL. Links often appear only near game time; curl/wget get Cloudflare challenges — the scraper uses Puppeteer **stealth** + system Chrome when available (UA/client-hints matched to that Chrome), reuses `data/onhockey-cf-cookies.json` (`cf_clearance`), and does a single load (with one clearance-cookie reload if the interstitial sticks). A failed onhockey scrape no longer aborts ppv.st/TimStreams. Deep-scrape preference: `mtchor` → `fluidtv` → `streamd` → `plytvme` → `sportpl` → `brcove` / `vodcast`.
+- **NHL + hockey merge:** After scraping, onhockey `NHL` and ppv.st `HOCKEY` / `ICE HOCKEY` listings for the same matchup are combined into one feed item under `NHL` (team-alias pairing, same idea as the plexflix scores sidecar). Non-NHL ice hockey stays under `HOCKEY`.
   - **plytvme** must load inside a parent iframe (direct `embedsports.me` URLs show “Direct access blocked”). Nested player is on dervlin; headless Chrome often fails there — for best results on a server run with a display (`PROXY_HEADLESS=false` or `xvfb-run -a` with headless off).
   - **sportpl** (sportplus.watch) is often geo-blocked in the US; the scraper fails fast on that message.
   - **streamd** strips click-stealing `#dontfoid` overlays and can read JW playlist files.
