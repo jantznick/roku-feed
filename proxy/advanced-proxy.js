@@ -27,7 +27,7 @@ const port = process.env.PORT || 8787;
 const proxyHost = process.env.PROXY_HOST || '192.168.1.50:8787';
 const debug = process.env.PROXY_DEBUG === 'true';
 
-const PROXY_VERSION = 'embed-first-v35-roku-paths';
+const PROXY_VERSION = 'embed-first-v36-d1-rebase';
 
 function isLoopbackClient(req) {
     const ip = String(req.ip || req.socket?.remoteAddress || '');
@@ -249,8 +249,9 @@ function unwrapWebpTsSegment(body) {
         return scanned;
     }
 
-    console.log('  - WebP segment had no sustained MPEG-TS sync run; passing through');
-    return body;
+    console.log('  - WebP segment had no sustained MPEG-TS sync run');
+    // Signal empty so the caller 502s — do not hand RIFF/WebP bytes to Roku.
+    return Buffer.alloc(0);
 }
 
 /** PNG GOAT first (Streamed/Daddy), then WebP-TS (TimStreams); otherwise passthrough. */
@@ -303,7 +304,7 @@ console.log('  - /proxy else: embed-first Chromium (Streamed / Daddy); live play
 console.log('  - /remux/{payload}: optional ffmpeg AAC-LC (feed uses /proxy)');
 
 app.get('/', (req, res) => {
-    res.send('Proxy server is running (embed-first stream resolve)');
+    res.type('text/plain').send(`Proxy server is running (${PROXY_VERSION})`);
 });
 
 // Remux live HLS (HE-AAC → AAC-LC). Same payload as /proxy/{b64}.
@@ -460,6 +461,57 @@ async function fetchUpstream(
     return { response: browserResponse, mode: 'chromium' };
 }
 
+/**
+ * Map a feed/stale manifest URL onto the live embed resolve.
+ * Masters stay masters; variants rebase onto the fresh token host.
+ * Flat TimStreams playlists replace with the fresh URL.
+ */
+function mapManifestOntoResolved(streamUrl, stream) {
+    let upstreamUrl = streamUrl;
+    let manifestBaseUrl = streamUrl;
+    let resolvedFromEmbed = false;
+
+    if (!stream?.streamUrl) {
+        return { upstreamUrl, manifestBaseUrl, resolvedFromEmbed };
+    }
+
+    const masterBody = stream.manifestBody || '';
+    const isMaster = masterBody.includes('#EXT-X-STREAM-INF');
+    if (isMaster) {
+        let reqSuffix = '';
+        try {
+            reqSuffix = qualityPathSuffix(new URL(streamUrl).pathname);
+        } catch {
+            reqSuffix = '';
+        }
+        const variants = masterVariantSuffixes(masterBody);
+        if (!reqSuffix || reqSuffix === 'playlist.m3u8' || !variants.has(reqSuffix)) {
+            upstreamUrl = stream.streamUrl;
+            manifestBaseUrl = stream.streamUrl;
+            resolvedFromEmbed = stream.streamUrl !== streamUrl;
+            if (resolvedFromEmbed) {
+                console.log(`  - Serving live master (${stream.streamUrl.slice(0, 80)}...)`);
+            }
+        } else {
+            const rebased = rebaseOntoFreshMaster(streamUrl, stream.streamUrl);
+            if (rebased) {
+                upstreamUrl = rebased;
+                manifestBaseUrl = rebased;
+                resolvedFromEmbed = rebased !== streamUrl;
+                if (resolvedFromEmbed) {
+                    console.log(`  - Rebased variant → ${rebased.slice(0, 100)}...`);
+                }
+            }
+        }
+    } else if (stream.streamUrl !== streamUrl) {
+        upstreamUrl = stream.streamUrl;
+        manifestBaseUrl = stream.streamUrl;
+        resolvedFromEmbed = true;
+    }
+
+    return { upstreamUrl, manifestBaseUrl, resolvedFromEmbed };
+}
+
 async function resolvePlaybackContext(
     embedUrl,
     streamUrl,
@@ -479,61 +531,30 @@ async function resolvePlaybackContext(
         };
     }
 
-    // d=1 (TimStreams / some Streamed): always resolve from the embed at play
-    // time. Feed tokens expire (410); the embed `e` field is source of truth.
-    if (feedDirectOk) {
-        let stream = getCachedStream(embedUrl);
-        if (!stream || forceEmbed) {
-            console.log(
-                forceEmbed
-                    ? '  - d=1: re-resolving embed after failed manifest'
-                    : '  - d=1: awaiting embed for fresh signed m3u8'
-            );
-            try {
-                stream = await getResolvedStream(embedUrl, { force: forceEmbed });
-            } catch (err) {
-                console.error(
-                    `  - Embed resolve failed (${err.message}); feed URL HTTP only`
-                );
-                return {
-                    upstreamUrl: streamUrl,
-                    referer: feedReferer,
-                    extraHeaders: feedHeaders,
-                    directOk: true,
-                    manifestBaseUrl: streamUrl,
-                    resolvedFromEmbed: false,
-                    skipChromiumFallback: true,
-                };
-            }
-        }
-        const freshUrl = stream.streamUrl || streamUrl;
-        const useFresh = isManifest && Boolean(stream.streamUrl);
-        return {
-            upstreamUrl: useFresh ? freshUrl : streamUrl,
-            referer: stream.referer || feedReferer,
-            extraHeaders: {},
-            directOk: true,
-            manifestBaseUrl: useFresh ? freshUrl : streamUrl,
-            resolvedFromEmbed: useFresh && stream.streamUrl !== streamUrl,
-        };
-    }
-
-    // Streamed / Daddy / India embeds: keep the player open/resolved. Always
-    // honor forceEmbed after a dead feed URL — previously only TimStreams did.
+    // d=1 is a fetch hint (HTTP-first), not a source identity. Always resolve
+    // the embed for a fresh URL, then master/variant-rebase like Streamed/Daddy.
+    // Blindly swapping every manifest to streamUrl broke multi-variant masters
+    // when scrape/replay set d=1 on Streamed.
     let stream = getCachedStream(embedUrl);
     if (!stream || forceEmbed) {
+        console.log(
+            forceEmbed
+                ? '  - Re-resolving embed after failed manifest'
+                : feedDirectOk
+                    ? '  - d=1: awaiting embed for fresh signed m3u8'
+                    : '  - Awaiting embed resolve'
+        );
         try {
             stream = await getResolvedStream(embedUrl, { force: forceEmbed });
         } catch (err) {
             console.error(
                 `  - Embed resolve failed (${err.message}); feed URL HTTP only (no Chromium thrash)`
             );
-            // directOk true + dead URL used to Chromium-navigate the 403 m3u8 and
-            // starve other plays. HTTP-only fallback; caller returns upstream error.
             return {
                 upstreamUrl: streamUrl,
                 referer: feedReferer,
                 extraHeaders: feedHeaders,
+                // HTTP-only fallback; skip Chromium of the dead signed URL.
                 directOk: true,
                 manifestBaseUrl: streamUrl,
                 resolvedFromEmbed: false,
@@ -545,48 +566,21 @@ async function resolvePlaybackContext(
     let upstreamUrl = streamUrl;
     let manifestBaseUrl = streamUrl;
     let resolvedFromEmbed = false;
-
-    if (isManifest && stream.streamUrl) {
-        const masterBody = stream.manifestBody || '';
-        const isMaster = masterBody.includes('#EXT-X-STREAM-INF');
-        if (isMaster) {
-            let reqSuffix = '';
-            try {
-                reqSuffix = qualityPathSuffix(new URL(streamUrl).pathname);
-            } catch {
-                reqSuffix = '';
-            }
-            const variants = masterVariantSuffixes(masterBody);
-            if (!reqSuffix || reqSuffix === 'playlist.m3u8' || !variants.has(reqSuffix)) {
-                upstreamUrl = stream.streamUrl;
-                manifestBaseUrl = stream.streamUrl;
-                resolvedFromEmbed = stream.streamUrl !== streamUrl;
-                if (resolvedFromEmbed) {
-                    console.log(`  - Streamed: serving live master (${stream.streamUrl.slice(0, 80)}...)`);
-                }
-            } else {
-                const rebased = rebaseOntoFreshMaster(streamUrl, stream.streamUrl);
-                if (rebased) {
-                    upstreamUrl = rebased;
-                    manifestBaseUrl = rebased;
-                    resolvedFromEmbed = rebased !== streamUrl;
-                    if (resolvedFromEmbed) {
-                        console.log(`  - Streamed: rebased variant → ${rebased.slice(0, 100)}...`);
-                    }
-                }
-            }
-        } else if (stream.streamUrl !== streamUrl) {
-            upstreamUrl = stream.streamUrl;
-            manifestBaseUrl = stream.streamUrl;
-            resolvedFromEmbed = true;
-        }
+    if (isManifest) {
+        ({ upstreamUrl, manifestBaseUrl, resolvedFromEmbed } = mapManifestOntoResolved(
+            streamUrl,
+            stream
+        ));
     }
 
+    // Fetch hint: feed d=1 wins; otherwise use resolve-time Node replay.
+    const directOk = Boolean(feedDirectOk || stream.directFetchOk);
     return {
         upstreamUrl,
-        referer: stream.referer,
-        extraHeaders: stream.requestHeaders,
-        directOk: stream.directFetchOk,
+        referer: stream.referer || feedReferer,
+        // Slim payloads when HTTP-first or embed tab carries cookies.
+        extraHeaders: directOk ? {} : (stream.requestHeaders || {}),
+        directOk,
         manifestBaseUrl,
         resolvedFromEmbed,
     };
@@ -807,11 +801,15 @@ app.get('/proxy/*b64Payload', async (req, res) => {
                 ? response.body
                 : Buffer.from(response.body || '');
             const segmentBody = unwrapDisguisedSegment(rawBody);
+            const isWebp = rawBody.length >= 12
+                && rawBody.subarray(0, 4).equals(RIFF_MAGIC)
+                && rawBody.subarray(8, 12).equals(WEBP_MAGIC);
             if (!segmentBody || segmentBody.length === 0) {
+                const kind = isWebp ? 'WebP' : 'disguised';
                 console.error(
-                    `  - ERROR: unwrapped segment empty (upstream ${rawBody.length} bytes)`
+                    `  - ERROR: ${kind} segment had no MPEG-TS payload (${rawBody.length} bytes)`
                 );
-                res.status(502).send('Unwrapped segment empty');
+                res.status(502).send(`${kind} segment had no MPEG-TS payload`);
                 return;
             }
             if (

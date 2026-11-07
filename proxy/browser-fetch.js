@@ -8,7 +8,12 @@ import {
 import { launchBrowser as launchStealthBrowser, describePuppeteerMode } from '../src/puppeteer-config.js';
 import { BROWSER_USER_AGENT } from '../src/proxy-payload.js';
 import { isBrowserConnected } from '../src/puppeteer-utils.js';
-import { getEmbedPage } from './embed-pages.js';
+import {
+    getEmbedPage,
+    getIdleEmbedUrls,
+    hasOpenEmbedPages,
+    touchEmbedPage,
+} from './embed-pages.js';
 
 async function clearStreamCache() {
     const { clearAllResolvedStreams } = await import('./stream-session.js');
@@ -65,16 +70,6 @@ function parseCookieHeader(cookieHeader, baseUrl) {
             path: '/',
         };
     }).filter(Boolean);
-}
-
-async function applyRequestHeaders(page, referer) {
-    const headers = { Referer: referer };
-    try {
-        headers.Origin = new URL(referer).origin;
-    } catch {
-        // Optional
-    }
-    await page.setExtraHTTPHeaders(headers);
 }
 
 /** @type {Map<string, Promise<void>>} */
@@ -458,13 +453,26 @@ async function closeIdleSessions() {
 
     await Promise.all(closeTasks);
 
-    if (sessions.size === 0 && isBrowserConnected(browser)) {
+    // Age out idle embed player tabs (Daddy/Streamed live capture). Do NOT close
+    // the whole browser while any embed is still in use — that used to wipe
+    // mid-play sessions whenever BrowserSession pool went empty.
+    const idleEmbeds = getIdleEmbedUrls(IDLE_TIMEOUT_MS);
+    if (idleEmbeds.length > 0) {
+        const { clearResolvedStream } = await import('./stream-session.js');
+        for (const embedUrl of idleEmbeds) {
+            clearResolvedStream(embedUrl);
+            logStep(`Closed idle embed tab: ${embedUrl.slice(0, 80)}`);
+        }
+    }
+
+    const embedsOpen = hasOpenEmbedPages();
+    if (sessions.size === 0 && !embedsOpen && isBrowserConnected(browser)) {
         await browser.close().catch(() => {});
         browser = null;
         browserLaunchPromise = null;
         void clearStreamCache();
         logStep('Closed idle browser');
-    } else if (sessions.size > 0) {
+    } else if (sessions.size > 0 || embedsOpen) {
         scheduleIdleCleanup();
     }
 }
@@ -513,6 +521,10 @@ async function tryDirectSegmentFetch(url, referer, extraHeaders = {}) {
 export async function fetchViaBrowser(url, { embedUrl, referer, extraHeaders = {} }, isText) {
     const embedPage = embedUrl ? getEmbedPage(embedUrl) : null;
     const embedAlive = embedPage && !embedPage.isClosed();
+    if (embedAlive && embedUrl) {
+        touchEmbedPage(embedUrl);
+        scheduleIdleCleanup();
+    }
 
     if (isText && embedAlive) {
         let body = getLatestManifestBody(embedPage, url);
