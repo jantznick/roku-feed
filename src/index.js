@@ -5,7 +5,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { scrapeMainPage, deepScrapeGames } from './scraper.js';
 import { scrapeStreamedGames, scrape247Channels } from './streamed-scraper.js';
-import { scrapeTimstChannels } from './timst-scraper.js';
+import { scrapeTimstChannels, TIMST_LOGO_LEAGUES } from './timst-scraper.js';
 import { getPreviousFeed, compareGames, indexFeedItemsById } from './state-manager.js';
 import { generateImages } from './image-generator.js';
 import { downloadPosters } from './poster-downloader.js';
@@ -110,7 +110,7 @@ async function main() {
   console.log(`- DRY RUN: ${process.env.DRY_RUN === 'true' ? '✅ Enabled' : '❌ Disabled'}`);
   console.log(`- SKIP PROXY: ${process.env.SKIP_PROXY === 'true' ? '✅ Direct stream URLs only' : '❌ Use proxy when Referer present'}`);
   console.log(`- SKIP ONHOCKEY: ${process.env.SKIP_ONHOCKEY === 'true' ? '✅ Skipping onhockey.tv' : '❌ Scraping onhockey.tv'}`);
-  console.log(`- SKIP TIMST: ${process.env.SKIP_TIMST === 'true' ? '✅ Skipping TimStreams live-TV' : '❌ Scraping TimStreams → 24/7 / Entertainment / Cartoons'}`);
+  console.log(`- SKIP TIMST: ${process.env.SKIP_TIMST === 'true' ? '✅ Skipping TimStreams live-TV' : '❌ Scraping TimStreams → 24/7 / Entertainment / Movies / News / Cartoons'}`);
   const reuseTtlMs = getStreamReuseTtlMs();
   console.log(`- STREAM REUSE TTL: ${reuseTtlMs === 0 ? '❌ Disabled (always rescrape)' : `✅ ${Math.round(reuseTtlMs / 60000)} min`}`);
   console.log(`- EMBED CONCURRENCY: ${getEmbedConcurrency()}`);
@@ -242,7 +242,7 @@ async function main() {
     // Only new games (or title changes) get new posters; updates reuse existing B2 thumbnails.
     const newGameIds = new Set(newGames.map((g) => g.id));
     const needsNewPoster = (game) => {
-        if (game.league === '24/7 Channels' || game.league === 'Entertainment' || game.league === 'Cartoons') {
+        if (TIMST_LOGO_LEAGUES.has(game.league)) {
             return false;
         }
         if (!newGameIds.has(game.id)) {
@@ -266,7 +266,7 @@ async function main() {
 
     allGamesToAddOrUpdate.forEach((game) => {
         let posterUrl;
-        if (game.league === '24/7 Channels' || game.league === 'Entertainment' || game.league === 'Cartoons') {
+        if (TIMST_LOGO_LEAGUES.has(game.league)) {
             posterUrl = game.poster;
         } else if (publicUrlMap.has(game.id)) {
             posterUrl = publicUrlMap.get(game.id);
@@ -289,7 +289,7 @@ async function main() {
     const allLeagueKeys = Object.keys(feed).filter(key => Array.isArray(feed[key]));
     const knownNonSoccerLeagues = new Set([
         'NHL', 'NHL Rookie Camp', 'NCAA D1 Mens', 'AHL', 'BASKETBALL', 'AMERICAN-FOOTBALL',
-        'BASEBALL', 'HOCKEY', 'MOTOR-SPORTS', '24/7 Channels', 'Entertainment', 'Cartoons',
+        'BASEBALL', 'HOCKEY', 'MOTOR-SPORTS', '24/7 Channels', 'Entertainment', 'Movies', 'News', 'Cartoons',
     ]);
     prioritizeUsSoccer(feed, knownNonSoccerLeagues);
 

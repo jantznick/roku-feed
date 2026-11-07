@@ -6,7 +6,8 @@
  * (Previously timst.top + grandemx.org; same catalog JSON shape.)
  *
  * Feed sections: Sports → "24/7 Channels", Entertainment → "Entertainment",
- * Cartoons → "Cartoons". Catalog logos are used as Roku posters.
+ * Cartoons → "Cartoons", Movies/Cinema → "Movies", News/Politics → "News".
+ * Catalog logos are used as Roku posters.
  *
  * The CDN often 404s from datacenter IPs; we still capture the signed URL +
  * Referer so the LAN proxy / home IP can fetch it (same pattern as ppv.st).
@@ -34,6 +35,8 @@ const PLAYER_REFERER = 'https://ehgembxe.cfd/';
 const GENRE_ENTERTAINMENT = 1;
 const GENRE_SPORTS = 2;
 const GENRE_CARTOONS = 3;
+const GENRE_MOVIES = 4;
+const GENRE_NEWS = 5;
 
 /**
  * US sports networks to keep (Sports genre is huge / mostly international).
@@ -62,6 +65,8 @@ const SPORTS_ALLOWLIST = [
     'TUDN',
     'RACER Network',
     'UFC Fight Pass 24/7',
+    'NBC Sports Bay Area',
+    'NBC Sports Philadelphia',
 ];
 
 /**
@@ -205,7 +210,7 @@ async function resolveGrandeMxSignedUrl(browser, shortUrl, label) {
 
 /**
  * Pick TimStreams channels:
- * - all Cartoons
+ * - all Cartoons, Movies/Cinema, News/Politics
  * - US Entertainment (flag=us or unflagged without non-US name markers)
  * - curated US Sports allowlist
  *
@@ -239,7 +244,7 @@ async function fetchSelectedChannels() {
         const genreName = genreNames.get(genreId) || 'Other';
         let include = false;
 
-        if (genreId === GENRE_CARTOONS) {
+        if (genreId === GENRE_CARTOONS || genreId === GENRE_MOVIES || genreId === GENRE_NEWS) {
             include = true;
         } else if (genreId === GENRE_ENTERTAINMENT) {
             include = isUsEntertainmentChannel(name, channel.flag);
@@ -262,7 +267,13 @@ async function fetchSelectedChannels() {
         });
     }
 
-    const genreOrder = { Sports: 0, Entertainment: 1, Cartoons: 2 };
+    const genreOrder = {
+        Sports: 0,
+        Entertainment: 1,
+        'Movies/Cinema': 2,
+        'News/Politics': 3,
+        Cartoons: 4,
+    };
     const sportsOrder = new Map(SPORTS_ALLOWLIST.map((n, i) => [n.toLowerCase(), i]));
     picked.sort((a, b) => {
         const ga = genreOrder[a.genreName] ?? 9;
@@ -278,18 +289,31 @@ async function fetchSelectedChannels() {
 
 /**
  * Map TimStreams catalog genre → feed league key.
- * Sports land in the existing 24/7 Channels row; entertainment/cartoons get their own.
+ * Sports land in the existing 24/7 Channels row; other genres get their own rows.
  * @param {string} genreName
  */
 function leagueForGenre(genreName) {
     if (genreName === 'Sports') return '24/7 Channels';
     if (genreName === 'Cartoons') return 'Cartoons';
     if (genreName === 'Entertainment') return 'Entertainment';
+    if (genreName === 'Movies/Cinema') return 'Movies';
+    if (genreName === 'News/Politics') return 'News';
     return 'Entertainment';
 }
 
+/** Feed leagues that use catalog logos as posters (no generated art). */
+const TIMST_LOGO_LEAGUES = new Set([
+    '24/7 Channels',
+    'Entertainment',
+    'Cartoons',
+    'Movies',
+    'News',
+]);
+
+export { TIMST_LOGO_LEAGUES };
+
 /**
- * Scrape TimStreams live-TV into 24/7 Channels / Entertainment / Cartoons.
+ * Scrape TimStreams live-TV into feed league rows.
  * @param {import('puppeteer').Browser} browser
  * @param {Map<string, object>} [previousById]
  */
@@ -338,7 +362,11 @@ export async function scrapeTimstChannels(browser, previousById = new Map()) {
                 ? 'TimStreams cartoons'
                 : league === 'Entertainment'
                     ? 'TimStreams entertainment'
-                    : 'TimStreams live TV';
+                    : league === 'Movies'
+                        ? 'TimStreams movies'
+                        : league === 'News'
+                            ? 'TimStreams news'
+                            : 'TimStreams live TV';
 
         const previousItem = previousById.get(id);
         if (shouldReuseStreams(previousItem, embedUrls, { currentTitle: channel.name })) {
