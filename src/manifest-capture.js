@@ -88,8 +88,6 @@ export async function attachManifestCapture(page, log = () => {}) {
      * @type {Map<string, { body: string, url: string, seq: number }>}
      */
     const byPath = new Map();
-    /** @type {Map<string, number>} */
-    const latestSeqByPath = new Map();
     let captureSeq = 0;
 
     const onResponse = (response) => {
@@ -102,19 +100,15 @@ export async function attachManifestCapture(page, log = () => {}) {
         if (!path) {
             return;
         }
+        // Assign seq when the response arrives — not when the body finishes.
+        // A late-finishing older read must not overwrite a newer capture.
         const seq = ++captureSeq;
-        latestSeqByPath.set(path, Math.max(latestSeqByPath.get(path) || 0, seq));
 
         void (async () => {
             const text = await tryReadResponseBody(response);
             if (!text) {
                 return;
             }
-            // Stale read: a newer capture for this path was already assigned a higher seq.
-            if (seq < (latestSeqByPath.get(path) || 0)) {
-                return;
-            }
-            // Another in-flight read with a higher seq finished first.
             const current = byPath.get(path);
             if (current && current.seq > seq) {
                 return;
@@ -123,7 +117,7 @@ export async function attachManifestCapture(page, log = () => {}) {
             byPath.set(path, { body: text, url, seq });
             log(
                 `  -> Captured ${url.split('/').pop()} (${text.length} chars, ` +
-                    `seq=${mediaSequenceOf(text)})`
+                    `n=${seq} mediaSeq=${mediaSequenceOf(text)})`
             );
         })();
     };
