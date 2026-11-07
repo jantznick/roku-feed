@@ -26,7 +26,7 @@ const port = process.env.PORT || 8787;
 const proxyHost = process.env.PROXY_HOST || '192.168.1.50:8787';
 const debug = process.env.PROXY_DEBUG === 'true';
 
-const PROXY_VERSION = 'embed-first-v28-d1-fetch-fallback';
+const PROXY_VERSION = 'embed-first-v29-goat-ts-scan';
 
 function isLoopbackClient(req) {
     const ip = String(req.ip || req.socket?.remoteAddress || '');
@@ -86,14 +86,55 @@ function masterVariantSuffixes(masterBody) {
     return suffixes;
 }
 
-// GOAT disguises each MPEG-TS segment as a tiny PNG so it can live on TikTok's
-// image CDN. The real TS payload starts right after the PNG's IEND chunk. Strip
-// the PNG wrapper so players (VLC, Roku) get clean MPEG-TS they can decode.
+// GOAT disguises each MPEG-TS segment as a PNG/WebP so it can live on TikTok's
+// image CDN. Classic Streamed GOAT appended TS after PNG IEND. Newer Daddy /
+// tiktokx objects are full PNGs with the TS payload embedded — trailing-after-
+// IEND is empty (logs showed "4239018 -> 0 bytes"), so we also scan for a
+// sustained MPEG-TS sync run. Never return an empty buffer to Roku.
 const PNG_SIGNATURE = Buffer.from('89504e470d0a1a0a', 'hex');
 const RIFF_MAGIC = Buffer.from('RIFF');
 const WEBP_MAGIC = Buffer.from('WEBP');
 const MPEG_TS_PACKET_SIZE = 188;
 const MPEG_TS_SYNC = 0x47;
+
+/**
+ * Find the longest sustained MPEG-TS sync run (0x47 every 188 bytes).
+ * @returns {Buffer|null}
+ */
+function findMpegTsPayload(body, { minPackets = 6, searchLimit = Infinity } = {}) {
+    if (!Buffer.isBuffer(body) || body.length < MPEG_TS_PACKET_SIZE * minPackets) {
+        return null;
+    }
+    const limit = Math.min(body.length, searchLimit);
+    let best = null;
+    for (let i = 0; i < limit; i++) {
+        if (body[i] !== MPEG_TS_SYNC) {
+            continue;
+        }
+        let packets = 0;
+        let offset = i;
+        while (
+            offset + MPEG_TS_PACKET_SIZE <= body.length &&
+            body[offset] === MPEG_TS_SYNC
+        ) {
+            packets++;
+            offset += MPEG_TS_PACKET_SIZE;
+        }
+        if (packets >= minPackets && (!best || packets > best.packets)) {
+            best = { start: i, packets };
+        }
+        if (packets > 0) {
+            i = offset - 1;
+        }
+    }
+    if (!best) {
+        return null;
+    }
+    return body.subarray(
+        best.start,
+        best.start + best.packets * MPEG_TS_PACKET_SIZE
+    );
+}
 
 function unwrapGoatSegment(body) {
     if (!Buffer.isBuffer(body) || body.length < 8) {
@@ -102,14 +143,36 @@ function unwrapGoatSegment(body) {
     if (!body.subarray(0, 8).equals(PNG_SIGNATURE)) {
         return body;
     }
+
+    // Classic GOAT: tiny PNG header, real TS immediately after IEND+CRC.
     const iendIndex = body.indexOf('IEND');
-    if (iendIndex === -1) {
-        return body;
+    if (iendIndex !== -1) {
+        const tsStart = iendIndex + 4 + 4; // "IEND" (4) + CRC (4)
+        if (tsStart < body.length) {
+            const trailing = body.subarray(tsStart);
+            const trailingTs = findMpegTsPayload(trailing, { minPackets: 3 });
+            if (trailingTs) {
+                console.log(
+                    `  - Unwrapped GOAT PNG segment: ${body.length} -> ${trailingTs.length} bytes`
+                );
+                return trailingTs;
+            }
+        }
     }
-    const tsStart = iendIndex + 4 + 4; // "IEND" (4) + CRC (4)
-    const payload = body.subarray(tsStart);
-    console.log(`  - Unwrapped GOAT PNG segment: ${body.length} -> ${payload.length} bytes`);
-    return payload;
+
+    // Newer tiktokx / Daddy: complete PNG with TS embedded; after-IEND is empty.
+    const scanned = findMpegTsPayload(body, { minPackets: 6 });
+    if (scanned) {
+        console.log(
+            `  - Unwrapped GOAT PNG via TS sync scan: ${body.length} -> ${scanned.length} bytes`
+        );
+        return scanned;
+    }
+
+    console.log(
+        `  - PNG segment had no MPEG-TS payload; passing through (${body.length} bytes)`
+    );
+    return body;
 }
 
 /**
@@ -125,36 +188,22 @@ function unwrapWebpTsSegment(body) {
         return body;
     }
 
-    const minPackets = 3;
-    const searchLimit = Math.min(body.length, 64 * 1024);
-    for (let i = 0; i < searchLimit; i++) {
-        if (body[i] !== MPEG_TS_SYNC) {
-            continue;
-        }
-        let packets = 0;
-        let offset = i;
-        while (
-            offset + MPEG_TS_PACKET_SIZE <= body.length &&
-            body[offset] === MPEG_TS_SYNC
-        ) {
-            packets++;
-            offset += MPEG_TS_PACKET_SIZE;
-        }
-        if (packets >= minPackets) {
-            const payload = body.subarray(i, i + packets * MPEG_TS_PACKET_SIZE);
-            console.log(
-                `  - Unwrapped WebP-TS segment: ${body.length} -> ${payload.length} bytes ` +
-                    `(offset ${i}, ${packets} packets)`
-            );
-            return payload;
-        }
+    const scanned = findMpegTsPayload(body, {
+        minPackets: 3,
+        searchLimit: Math.min(body.length, 64 * 1024),
+    });
+    if (scanned) {
+        console.log(
+            `  - Unwrapped WebP-TS segment: ${body.length} -> ${scanned.length} bytes`
+        );
+        return scanned;
     }
 
     console.log('  - WebP segment had no sustained MPEG-TS sync run; passing through');
     return body;
 }
 
-/** PNG GOAT first (Streamed), then WebP-TS (TimStreams); otherwise passthrough. */
+/** PNG GOAT first (Streamed/Daddy), then WebP-TS (TimStreams); otherwise passthrough. */
 function unwrapDisguisedSegment(body) {
     const afterPng = unwrapGoatSegment(body);
     if (afterPng !== body) {
@@ -355,30 +404,28 @@ async function resolvePlaybackContext(
         };
     }
 
-    // TimStreams (d=1): open embed once (cached) for a fresh signed m3u8 + cookies.
-    // Segments stay on /proxy so WebP-TS can be unwrapped for Roku; fetch tries HTTP
-    // then Chromium when TikTok 403s the proxy host.
+    // TimStreams (d=1): prefer the feed/signed URL immediately so Roku is not
+    // blocked ~20s on a headless embed that often finds 0 m3u8 candidates.
+    // Warm/refresh the embed in the background when missing; use cache when ready.
     if (feedDirectOk) {
         let stream = getCachedStream(embedUrl);
         if (!stream) {
-            console.log('  - TimStreams: opening embed for signed m3u8 + segment cookies');
-            try {
-                stream = await getResolvedStream(embedUrl);
-            } catch (err) {
-                // Chrome SIGSEGV / launch failures used to 500 every Roku play.
-                // Fall back to the feed's signed URL over plain HTTP.
+            console.log(
+                '  - TimStreams: using feed URL first; warming embed in background'
+            );
+            void getResolvedStream(embedUrl).catch((err) => {
                 console.error(
-                    `  - Embed resolve failed (${err.message}); using feed URL via HTTP`
+                    `  - Background embed warm failed (${err.message}); staying on feed URL`
                 );
-                return {
-                    upstreamUrl: streamUrl,
-                    referer: feedReferer,
-                    extraHeaders: feedHeaders,
-                    directOk: true,
-                    manifestBaseUrl: streamUrl,
-                    resolvedFromEmbed: false,
-                };
-            }
+            });
+            return {
+                upstreamUrl: streamUrl,
+                referer: feedReferer,
+                extraHeaders: feedHeaders,
+                directOk: true,
+                manifestBaseUrl: streamUrl,
+                resolvedFromEmbed: false,
+            };
         }
         const freshUrl = stream.streamUrl || streamUrl;
         const useFresh = isManifest && Boolean(stream.streamUrl);
